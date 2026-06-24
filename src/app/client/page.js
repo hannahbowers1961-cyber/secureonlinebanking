@@ -8,18 +8,21 @@ import { supabase } from '../../lib/supabaseClient';
 export default function ClientDashboard() {
   const [isMounted, setIsMounted] = useState(false);
   const [username, setUsername] = useState('');
+  const [currentView, setCurrentView] = useState('dashboard'); 
   
-  // App State
+  // App & Data State
   const [transactions, setTransactions] = useState([]);
   const [activeModal, setActiveModal] = useState(null); 
   const [systemAlert, setSystemAlert] = useState('');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [lastLoginTime, setLastLoginTime] = useState(''); 
+  const [isProcessing, setIsProcessing] = useState(true); 
+  const [txFilter, setTxFilter] = useState('All');
 
   // Transfer State
   const [transferAmount, setTransferAmount] = useState(''); 
   const [formattedAmount, setFormattedAmount] = useState(''); 
   const [transferDesc, setTransferDesc] = useState('');
+  const [recipientName, setRecipientName] = useState(''); 
   const [recipientAccount, setRecipientAccount] = useState(''); 
   const [routingNumber, setRoutingNumber] = useState(''); 
   const [fromAccount, setFromAccount] = useState('Main');
@@ -29,6 +32,12 @@ export default function ClientDashboard() {
   // Baselines
   const initialMain = 250000.00;
   const initialVault = 1500000.00;
+  
+  const mockLoginHistory = [
+    { id: 1, date: new Date().toLocaleString(), device: navigator.userAgent?.includes('Mac') ? 'Mac OS - Safari' : 'Windows - Chrome', location: 'Current Session' },
+    { id: 2, date: '06/22/2026, 08:14 AM', device: 'iOS - Safari', location: 'Mobile Network' },
+    { id: 3, date: '06/18/2026, 14:32 PM', device: 'Mac OS - Chrome', location: 'Verified IP' }
+  ];
 
   useEffect(() => {
     const isAuth = sessionStorage.getItem('client_authenticated');
@@ -38,21 +47,28 @@ export default function ClientDashboard() {
     setUsername(currentUser);
 
     const now = new Date();
-    const formattedDate = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-    const formattedTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    setLastLoginTime(`${formattedDate} at ${formattedTime}`);
+    setLastLoginTime(`${now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
 
     setIsMounted(true); 
     fetchCloudTransactions(currentUser);
   }, []);
 
+  const simulateNetworkLatency = async (callback) => {
+    setIsProcessing(true);
+    await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 800)); 
+    await callback();
+    setIsProcessing(false);
+  };
+
   const fetchCloudTransactions = async (user) => {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('user_id', user)
-      .order('id', { ascending: false });
-    if (data) setTransactions(data);
+    simulateNetworkLatency(async () => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user)
+        .order('id', { ascending: false });
+      if (data) setTransactions(data);
+    });
   };
 
   const calculateBalance = (targetAccount, startingAmount) => {
@@ -74,16 +90,10 @@ export default function ClientDashboard() {
   const totalIn = transactions.filter(t => t.type === 'Credit' && t.status === 'approved').reduce((acc, t) => acc + Number(t.amount), 0);
   const totalOut = transactions.filter(t => t.type === 'Debit' && t.status === 'approved').reduce((acc, t) => acc + Number(t.amount), 0);
 
-  // Input Formatting Handlers
-  const handleNumericInput = (e, setter) => {
-    const value = e.target.value;
-    const numericValue = value.replace(/[^0-9]/g, ''); 
-    setter(numericValue);
-  };
+  const handleNumericInput = (e, setter) => { setter(e.target.value.replace(/[^0-9]/g, '')); };
 
   const handleAmountChange = (e) => {
-    const value = e.target.value;
-    const numericValue = value.replace(/[^0-9]/g, '');
+    const numericValue = e.target.value.replace(/[^0-9]/g, '');
     const number = Number(numericValue);
     setTransferAmount(numericValue); 
     setFormattedAmount(numericValue ? number.toLocaleString('en-US') : ''); 
@@ -98,7 +108,7 @@ export default function ClientDashboard() {
 
     const availableFunds = fromAccount === 'Main' ? mainBalance : vaultBalance;
     if (amountVal > availableFunds) {
-      setSuccessMsg('❌ ERROR: Insufficient funds.'); 
+      setSuccessMsg('❌ ERROR: Insufficient funds available.'); 
       setTimeout(() => setSuccessMsg(''), 4000); 
       setIsTransferring(false);
       return;
@@ -106,7 +116,7 @@ export default function ClientDashboard() {
 
     const newTx = {
       type: 'Debit',
-      desc: transferDesc || `Transfer: Account ••••${recipientAccount.slice(-4)}`,
+      desc: transferDesc || `Wire: ${recipientName} (••••${recipientAccount.slice(-4)})`,
       amount: amountVal,
       status: 'pending',
       account: fromAccount,
@@ -114,22 +124,26 @@ export default function ClientDashboard() {
       date: new Date().toISOString().split('T')[0]
     };
 
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
+
     const { error } = await supabase.from('transactions').insert([newTx]);
 
     if (!error) {
-      fetchCloudTransactions(username);
-      setTransferAmount(''); setFormattedAmount(''); setTransferDesc(''); setRecipientAccount(''); setRoutingNumber('');
-      setSuccessMsg('✓ Transfer Initiated. Waiting for approval.'); 
+      const { data } = await supabase.from('transactions').select('*').eq('user_id', username).order('id', { ascending: false });
+      if (data) setTransactions(data);
+      
+      setTransferAmount(''); setFormattedAmount(''); setTransferDesc(''); setRecipientAccount(''); setRoutingNumber(''); setRecipientName('');
+      setSuccessMsg('✓ Transfer Initiated. Waiting for network clearing.'); 
       setTimeout(() => { setActiveModal(null); setSuccessMsg(''); }, 3000);
     } else {
-      setSuccessMsg('❌ ERROR: Connection to vault failed.');
+      setSuccessMsg('❌ ERROR: Secure connection failed.');
     }
     setIsTransferring(false);
   };
 
   const generatePDFStatement = () => {
     const doc = new jsPDF();
-    doc.text("Apex Global Vault - Activity Statement", 14, 22);
+    doc.text("Global Vault - Official Statement", 14, 22);
     const tableRows = transactions.map(t => [t.date, t.desc, t.account || 'Main', t.status.toUpperCase(), `${t.type === 'Credit' ? '+' : '-'}$${Number(t.amount).toLocaleString()}`]);
     autoTable(doc, { startY: 30, head: [["Date", "Description", "Account", "Status", "Amount"]], body: tableRows, theme: 'grid' });
     doc.save(`Activity_Statement.pdf`);
@@ -142,142 +156,207 @@ export default function ClientDashboard() {
   };
 
   const triggerMockFeature = (feature) => {
-    setSystemAlert(`Module "${feature}" is under secure maintenance.`);
+    setSystemAlert(`Module "${feature}" is secure and active.`);
     setTimeout(() => setSystemAlert(''), 3000);
   };
 
-  // MODERNIZED CLASSIC CSS (Responsive & Sleek)
+  const changeView = (view) => {
+    if (view !== currentView) {
+      simulateNetworkLatency(() => setCurrentView(view));
+    }
+  };
+
+  const filteredTransactions = transactions.filter(t => {
+    if (txFilter === 'All') return true;
+    return t.status.toLowerCase() === txFilter.toLowerCase();
+  });
+
+  // --- THE FULLY RESPONSIVE CSS PATCH ---
   const styles = `
-    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    body { background-color: #e5e9ec; margin: 0; padding: 0; color: #333; -webkit-font-smoothing: antialiased; }
-    
-    /* Utility Bar */
-    .utility-bar { background-color: #002d5b; color: white; display: flex; justify-content: space-between; align-items: center; padding: 8px 24px; font-size: 12px; font-weight: 500; height: 48px; }
-    .brand { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
-    .brand-icon { width: 24px; height: 24px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #002d5b; font-size: 14px; font-weight: bold; }
-    .utility-links { display: flex; gap: 20px; align-items: center; }
-    .u-link { background: none; border: none; color: white; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 0; }
-    .u-link:hover { text-decoration: underline; }
-    .search-box { display: flex; align-items: center; background: white; border-radius: 4px; overflow: hidden; height: 28px; }
-    .search-box input { padding: 0 10px; border: none; outline: none; font-size: 12px; width: 140px; }
-    .search-box button { background: #6a9b2d; border: none; color: white; cursor: pointer; padding: 0 12px; height: 100%; font-weight: bold; }
-    .mobile-nav-toggle { display: none; background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0; }
-
-    /* Main Navigation */
-    .main-nav { background-color: #12436d; display: flex; padding: 0 24px; border-bottom: 4px solid #002d5b; position: relative; }
-    .nav-tab { padding: 14px 20px; color: #e2e8f0; font-size: 13px; font-weight: 600; cursor: pointer; border-right: 1px solid rgba(255,255,255,0.1); transition: all 0.2s; white-space: nowrap; }
-    .nav-tab.active { background-color: #e5e9ec; color: #002d5b; border-top: 4px solid #6a9b2d; padding-top: 10px; }
-    .nav-tab:hover:not(.active) { background-color: rgba(255,255,255,0.1); color: white; }
-
-    /* Mobile Nav Overlay */
-    .mobile-menu { position: fixed; top: 48px; left: 0; width: 100%; background: #12436d; z-index: 50; display: none; flex-direction: column; border-bottom: 4px solid #002d5b; box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
-    .mobile-menu.open { display: flex; }
-    .mobile-menu .nav-tab { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 16px 24px; }
-    
-    /* Container & Welcome */
-    .container { max-width: 1080px; margin: 0 auto; padding: 24px 16px; }
-    .welcome-banner { background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 20px 24px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .welcome-banner h1 { color: #002d5b; margin: 0 0 4px 0; font-size: 24px; font-weight: 700; }
-    .welcome-meta { font-size: 13px; color: #64748b; }
-    .tax-promo { text-align: right; font-size: 13px; line-height: 1.5; border-left: 1px solid #e2e8f0; padding-left: 24px; }
-
-    /* The Grid */
-    .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
-
-    /* Widget Styling */
-    .widget { background: white; border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); overflow: hidden; }
-    .widget-header { background: #325a7f; color: white; padding: 12px 20px; font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
-    .widget-action { font-size: 12px; font-weight: normal; cursor: pointer; color: #cbd5e1; }
-    .widget-action:hover { color: white; text-decoration: underline; }
-
-    /* Section Subheaders */
-    .section-bar { background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; border-top: 1px solid #e2e8f0; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
-    .section-title { font-weight: 700; color: #002d5b; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-    .section-meta { font-size: 12px; color: #64748b; }
-
-    /* Flexbox Account Rows (Responsive Table Alternative) */
-    .account-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #f1f5f9; transition: background 0.2s; }
-    .account-row:hover { background-color: #f8fafc; }
-    .account-row:last-child { border-bottom: none; }
-    
-    .acc-info { flex: 1; }
-    .acc-link { color: #005a9c; font-weight: 600; font-size: 15px; text-decoration: none; cursor: pointer; display: block; }
-    .acc-link:hover { text-decoration: underline; }
-    .acc-desc { font-size: 12px; color: #64748b; margin-top: 4px; display: block; }
-    
-    .acc-action { margin: 0 24px; }
-    .i-want-to { background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 12px; font-size: 12px; font-weight: 500; color: #333; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-    .i-want-to:hover { background: #e2e8f0; border-color: #94a3b8; }
-    
-    .acc-balance { text-align: right; font-weight: 700; font-size: 16px; color: #0f172a; min-width: 120px; }
-
-    /* General Buttons */
-    .btn-green { background: #6a9b2d; color: white; border: none; padding: 10px 20px; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; text-align: center; display: inline-block; width: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-    .btn-green:hover { background: #557c24; }
-    
-    .btn-action { background: #f8fafc; border: 1px solid #cbd5e1; color: #005a9c; font-weight: 600; padding: 14px; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; font-size: 14px; transition: all 0.2s; width: 100%; margin-bottom: 12px; }
-    .btn-action:hover { border-color: #005a9c; background: #f0f7ff; }
-
-    /* Specific Widget Content */
-    .promo-content { padding: 20px; text-align: center; }
-    .action-group { padding: 20px; background: #f8fafc; text-align: center; }
-    
-    /* Progress Bar */
-    .goal-box { padding: 20px; border-bottom: 1px solid #e2e8f0; }
-    .progress-track { width: 100%; height: 12px; background: #e2e8f0; border-radius: 6px; margin: 12px 0; overflow: hidden; border: 1px inset rgba(0,0,0,0.1); }
-    .progress-fill { height: 100%; background: #005a9c; width: 65%; border-radius: 6px; }
-
-    /* Track Money Layout */
-    .track-row { display: flex; justify-content: space-between; padding: 12px 0; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
-    .track-row.total { border-bottom: none; border-top: 2px solid #e2e8f0; font-weight: 700; padding-top: 16px; margin-top: 4px; }
-    .txt-green { color: #166534; font-weight: 600; }
-    .txt-red { color: #991b1b; font-weight: 600; }
-
-    /* Modal Overlay (Mobile Optimized) */
-    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 45, 91, 0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; backdrop-filter: blur(2px); }
-    .modal-content { background: white; width: 100%; max-width: 480px; border-radius: 6px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
-    .modal-header { background: #002d5b; color: white; padding: 16px 20px; font-weight: 600; font-size: 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; }
-    .modal-body { padding: 24px; }
-    .input-group { margin-bottom: 16px; }
-    .input-label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 6px; }
-    .input-field { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 16px; background: #f8fafc; outline: none; transition: border-color 0.2s; }
-    .input-field:focus { border-color: #005a9c; background: white; }
-
-    /* Toast */
-    .toast { position: fixed; bottom: 24px; right: 24px; background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 16px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; }
-
-    /* AGGRESSIVE MOBILE RESPONSIVENESS */
-    @media (max-width: 900px) {
-      .dashboard-grid { grid-template-columns: 1fr; }
+    :root {
+      --brand-blue: #0c2074;
+      --hero-blue: #0045a5;
+      --brand-red: #e31837;
+      --bg-gray: #f4f5f7;
+      --text-main: #1f2937;
+      --text-muted: #6b7280;
+      --border-light: #e5e7eb;
     }
     
-    @media (max-width: 768px) {
-      .utility-bar { padding: 8px 16px; }
-      .utility-links { display: none; } /* Hide links, show hamburger */
-      .mobile-nav-toggle { display: block; }
-      .main-nav { display: none; } /* Hide desktop nav bar */
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    html, body { background-color: var(--bg-gray); margin: 0; padding: 0; color: var(--text-main); -webkit-font-smoothing: antialiased; max-width: 100vw; overflow-x: hidden; }
+    
+    .loader-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.8); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+    .spinner { border: 4px solid var(--border-light); border-top: 4px solid var(--brand-red); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 16px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    /* Desktop Header */
+    .desktop-header { background: white; border-bottom: 1px solid var(--border-light); width: 100%; }
+    .top-utility-bar { display: flex; justify-content: space-between; align-items: center; padding: 16px 40px; max-width: 1400px; margin: 0 auto; gap: 16px; flex-wrap: wrap; }
+    .brand-logo { font-size: 22px; font-weight: 800; color: var(--brand-red); letter-spacing: -1px; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .brand-logo span { color: var(--brand-blue); }
+    
+    /* Responsive Search */
+    .search-bar { background: var(--bg-gray); border-radius: 24px; display: flex; align-items: center; padding: 8px 16px; width: 100%; max-width: 300px; flex: 1; min-width: 200px; }
+    .search-bar input { background: transparent; border: none; outline: none; width: 100%; font-size: 14px; margin-left: 8px; }
+    
+    .top-actions { display: flex; align-items: center; gap: 24px; font-size: 14px; font-weight: 500; color: var(--text-main); flex-wrap: wrap; }
+    .top-actions span { cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .top-actions span:hover { color: var(--hero-blue); }
+    
+    .main-nav { background: white; border-bottom: 1px solid var(--border-light); padding: 0 40px; width: 100%; overflow-x: auto; }
+    .nav-container { max-width: 1400px; margin: 0 auto; display: flex; gap: 32px; min-width: max-content; }
+    .nav-tab { padding: 16px 0; font-size: 15px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; }
+    .nav-tab.active { color: var(--hero-blue); border-bottom: 3px solid var(--hero-blue); }
+    .nav-tab:hover:not(.active) { color: var(--text-main); }
+
+    /* Mobile Header */
+    .mobile-header { display: none; background: var(--hero-blue); color: white; padding: 20px 20px 0 20px; width: 100%; }
+    .mobile-top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; width: 100%; }
+    .hamburger { font-size: 24px; cursor: pointer; }
+    .mobile-search { flex: 1; margin: 0 16px; background: rgba(255,255,255,0.2); border-radius: 20px; padding: 8px 16px; display: flex; align-items: center; }
+    .mobile-search input { background: transparent; border: none; color: white; width: 100%; outline: none; }
+    .mobile-search input::placeholder { color: rgba(255,255,255,0.8); }
+    
+    .mobile-greeting { font-size: 24px; font-weight: 700; margin-bottom: 16px; letter-spacing: -0.5px; word-break: break-word; }
+    
+    .mobile-pills { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 20px; scrollbar-width: none; -ms-overflow-style: none; }
+    .mobile-pills::-webkit-scrollbar { display: none; }
+    .pill { background: white; color: var(--hero-blue); padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+    /* Desktop Hero */
+    .desktop-hero-container { max-width: 1400px; margin: 0 auto; padding: 32px 40px 0 40px; width: 100%; }
+    .desktop-hero { background: var(--hero-blue); border-radius: 12px; padding: 40px; color: white; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 25px -5px rgba(0,69,165,0.3); flex-wrap: wrap; gap: 32px; }
+    .hero-text { flex: 1; min-width: 250px; }
+    .hero-text h1 { margin: 0 0 8px 0; font-size: 36px; font-weight: 700; letter-spacing: -1px; word-break: break-word; }
+    .hero-text p { margin: 0; font-size: 16px; color: rgba(255,255,255,0.9); }
+    
+    /* Responsive Promo Card */
+    .promo-card { background: white; color: var(--text-main); padding: 24px; border-radius: 8px; width: 100%; max-width: 350px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
+    .promo-card h3 { margin: 0 0 8px 0; font-size: 16px; color: var(--text-main); }
+    .promo-card p { margin: 0 0 16px 0; font-size: 13px; color: var(--text-muted); line-height: 1.4; }
+    .btn-red { background: var(--brand-red); color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+    /* Layout */
+    .main-container { max-width: 1400px; margin: 0 auto; padding: 24px 40px 80px 40px; width: 100%; }
+    
+    .action-row { display: flex; justify-content: flex-end; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .btn-blue-outline { background: white; color: var(--hero-blue); border: 1px solid var(--hero-blue); padding: 8px 16px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .btn-blue-outline:hover { background: var(--hero-blue); color: white; }
+    .btn-blue-solid { background: var(--hero-blue); color: white; border: 1px solid var(--hero-blue); padding: 8px 16px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+    .btn-blue-solid:hover { background: var(--brand-blue); }
+
+    .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+    
+    /* Cards */
+    .us-card { background: white; border-radius: 12px; border: 1px solid var(--border-light); padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); overflow: hidden; }
+    .card-header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .card-title { font-size: 20px; font-weight: 700; color: var(--text-main); margin: 0; }
+    .card-meta { font-size: 13px; color: var(--hero-blue); display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+    
+    .list-header { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 16px; }
+    .account-item { border: 1px solid var(--border-light); border-radius: 8px; padding: 20px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 16px; transition: box-shadow 0.2s; cursor: pointer; }
+    .account-item:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    
+    .acc-inner { display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 16px; }
+    .acc-left { display: flex; gap: 16px; align-items: center; }
+    .acc-icon-box { width: 48px; height: 32px; background: linear-gradient(135deg, #0c2074, #0045a5); border-radius: 4px; position: relative; overflow: hidden; border: 1px solid rgba(0,0,0,0.1); flex-shrink: 0; }
+    .acc-icon-box::after { content: 'Visa'; position: absolute; bottom: 2px; right: 4px; color: white; font-size: 8px; font-weight: bold; font-style: italic; }
+    .acc-icon-box.red { background: linear-gradient(135deg, #e31837, #b01028); }
+    .acc-icon-box.red::after { content: 'Vault'; }
+    
+    .acc-name { font-size: 16px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .acc-number { font-size: 16px; color: var(--text-muted); font-weight: 400; }
+    
+    .acc-right { text-align: left; }
+    .acc-balance { font-size: 24px; font-weight: 700; color: var(--text-main); word-break: break-word; }
+    
+    /* Cash Flow */
+    .flow-row { display: flex; justify-content: space-between; margin-bottom: 16px; gap: 16px; flex-wrap: wrap; }
+    .flow-block { flex: 1; min-width: 120px; }
+    .flow-label { font-size: 13px; color: var(--text-muted); font-weight: 500; margin-bottom: 4px; }
+    .flow-val { font-size: 20px; font-weight: 700; word-break: break-word; }
+    .val-in { color: #166534; }
+    .val-out { color: var(--text-main); }
+    
+    /* Transactions */
+    .filter-pills { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .f-pill { background: white; border: 1px solid var(--border-light); padding: 8px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; cursor: pointer; color: var(--text-muted); transition: all 0.2s; white-space: nowrap; }
+    .f-pill.active { background: var(--hero-blue); color: white; border-color: var(--hero-blue); }
+    
+    .table-wrapper { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+    .tx-table { width: 100%; border-collapse: collapse; min-width: 500px; }
+    .tx-table th { padding: 12px 16px; text-align: left; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid var(--border-light); font-weight: 500; white-space: nowrap; }
+    .tx-table td { padding: 16px; border-bottom: 1px solid var(--border-light); font-size: 14px; }
+    .tx-desc { font-weight: 600; color: var(--text-main); min-width: 150px; }
+    .status-badge { font-size: 12px; padding: 4px 8px; border-radius: 4px; font-weight: 600; background: var(--bg-gray); white-space: nowrap; }
+
+    /* Forms */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .input-group { margin-bottom: 20px; width: 100%; }
+    .input-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 8px; }
+    .input-field { width: 100%; padding: 12px 16px; border: 1px solid var(--border-light); border-radius: 8px; font-size: 16px; transition: border-color 0.2s; outline: none; }
+    .input-field:focus { border-color: var(--hero-blue); box-shadow: 0 0 0 1px var(--hero-blue); }
+    .input-field:disabled { background: var(--bg-gray); color: var(--text-muted); }
+
+    /* Modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; backdrop-filter: blur(2px); box-sizing: border-box; }
+    .modal-content { background: white; width: 100%; max-width: 500px; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; position: relative; margin: 0 auto; }
+    .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: white; z-index: 10; }
+    .modal-header h2 { margin: 0; font-size: 18px; color: var(--text-main); }
+
+    .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #1f2937; color: white; padding: 16px 24px; border-radius: 8px; font-weight: 500; font-size: 14px; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); white-space: nowrap; max-width: 90vw; }
+
+    /* Mobile Bottom Nav */
+    .bottom-nav { display: none; position: fixed; bottom: 0; left: 0; width: 100%; background: white; border-top: 1px solid var(--border-light); z-index: 100; justify-content: space-around; padding: 12px 0 24px 0; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05); }
+    .b-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-muted); font-size: 10px; font-weight: 600; cursor: pointer; flex: 1; }
+    .b-nav-item.active { color: var(--hero-blue); }
+    .b-nav-icon { font-size: 20px; }
+
+    /* --- RESPONSIVE BREAKPOINTS --- */
+    
+    @media (max-width: 1024px) {
+      .top-utility-bar { padding: 16px 24px; }
+      .main-nav { padding: 0 24px; }
+      .desktop-hero-container { padding: 32px 24px 0 24px; }
+      .main-container { padding: 24px 24px 80px 24px; }
+    }
+
+    @media (max-width: 900px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .desktop-hero { flex-direction: column; text-align: left; align-items: stretch; }
+      .promo-card { max-width: 100%; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+    
+    @media (max-width: 850px) {
+      /* Complete switch to Mobile App Layout */
+      .desktop-header, .desktop-hero-container, .action-row { display: none; }
+      .mobile-header, .bottom-nav { display: flex; }
+      .mobile-header { flex-direction: column; }
       
-      .welcome-banner { flex-direction: column; align-items: flex-start; gap: 16px; padding: 16px; }
-      .tax-promo { border-left: none; padding-left: 0; text-align: left; width: 100%; border-top: 1px solid #e2e8f0; padding-top: 16px; }
+      .main-container { padding: 16px 16px 100px 16px; }
+      .us-card { padding: 16px; }
       
-      .container { padding: 16px; }
+      .acc-right { width: 100%; margin-top: 8px; }
+      .acc-balance { font-size: 28px; }
       
-      /* Reformat Account Rows for Mobile */
-      .account-row { flex-wrap: wrap; padding: 16px; gap: 12px; }
-      .acc-info { width: 100%; flex: none; }
-      .acc-balance { width: 100%; text-align: left; font-size: 20px; }
-      .acc-action { margin: 0; width: 100%; }
-      .i-want-to { width: 100%; justify-content: center; padding: 10px; font-size: 14px; }
-      
-      .toast { left: 16px; right: 16px; bottom: 16px; text-align: center; }
+      .toast { bottom: 100px; white-space: normal; text-align: center; }
     }
   `;
 
-  if (!isMounted) return <div style={{ minHeight: '100vh', backgroundColor: '#e5e9ec' }}></div>;
+  if (!isMounted) return <div style={{ minHeight: '100vh', backgroundColor: '#f4f5f7' }}></div>;
 
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: styles }} />
+      
+      {isProcessing && (
+        <div className="loader-overlay">
+          <div className="spinner"></div>
+          <div style={{ color: '#1f2937', fontWeight: '600' }}>Processing...</div>
+        </div>
+      )}
       
       {systemAlert && <div className="toast">ℹ️ {systemAlert}</div>}
 
@@ -286,39 +365,51 @@ export default function ClientDashboard() {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <span>Transfer Funds</span>
-              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '24px', lineHeight: 1 }}>×</button>
+              <h2>Transfer money</h2>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}>×</button>
             </div>
-            <div className="modal-body">
-              {successMsg && <div style={{ padding: '12px', marginBottom: '20px', borderRadius: '4px', backgroundColor: successMsg.includes('❌') ? '#fee2e2' : '#ecfccb', border: `1px solid ${successMsg.includes('❌') ? '#fca5a5' : '#bef264'}`, color: successMsg.includes('❌') ? '#991b1b' : '#3f6212', fontSize: '13px', fontWeight: '600' }}>{successMsg}</div>}
+            <div style={{ padding: '24px' }}>
+              {successMsg && <div style={{ padding: '12px', marginBottom: '20px', borderRadius: '4px', backgroundColor: successMsg.includes('❌') ? '#fee2e2' : '#e6ffed', color: successMsg.includes('❌') ? '#991b1b' : '#166534', fontSize: '14px', fontWeight: '500' }}>{successMsg}</div>}
+              
               <form onSubmit={handleTransferSubmit}>
                 <div className="input-group">
-                  <label className="input-label">Transfer From Account</label>
+                  <label className="input-label">Transfer from</label>
                   <select className="input-field" value={fromAccount} onChange={(e) => setFromAccount(e.target.value)}>
-                    <option value="Main">Classic Checking - ${mainBalance.toLocaleString()}</option>
-                    <option value="Vault">High Yield Savings - ${vaultBalance.toLocaleString()}</option>
+                    <option value="Main">Checking ...8842 - ${mainBalance.toLocaleString()}</option>
+                    <option value="Vault">Savings ...1195 - ${vaultBalance.toLocaleString()}</option>
                   </select>
                 </div>
+                
                 <div className="input-group">
-                  <label className="input-label">Destination Routing Number (9 Digits)</label>
-                  <input type="text" maxLength={9} required className="input-field" value={routingNumber} onChange={(e) => handleNumericInput(e, setRoutingNumber)} placeholder="000000000" />
+                  <label className="input-label">Recipient Name</label>
+                  <input type="text" required className="input-field" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
                 </div>
+
+                <div className="form-grid" style={{ marginBottom: '20px', gap: '16px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Routing #</label>
+                    <input type="text" maxLength={11} required className="input-field" value={routingNumber} onChange={(e) => handleNumericInput(e, setRoutingNumber)} />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label">Account #</label>
+                    <input type="text" maxLength={17} required className="input-field" value={recipientAccount} onChange={(e) => handleNumericInput(e, setRecipientAccount)} />
+                  </div>
+                </div>
+
                 <div className="input-group">
-                  <label className="input-label">Destination Account Number</label>
-                  <input type="text" maxLength={17} required className="input-field" value={recipientAccount} onChange={(e) => handleNumericInput(e, setRecipientAccount)} placeholder="Enter account #" />
+                  <label className="input-label">Amount</label>
+                  <input type="text" required className="input-field" value={formattedAmount} onChange={handleAmountChange} placeholder="$ 0.00" />
                 </div>
-                <div className="input-group">
-                  <label className="input-label">Amount ($)</label>
-                  <input type="text" required className="input-field" value={formattedAmount} onChange={handleAmountChange} placeholder="0.00" />
-                </div>
+                
                 <div className="input-group">
                   <label className="input-label">Memo (Optional)</label>
                   <input type="text" className="input-field" value={transferDesc} onChange={(e) => setTransferDesc(e.target.value)} />
                 </div>
-                <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-                  <button type="button" onClick={() => setActiveModal(null)} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '12px', fontWeight: '600', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
-                  <button type="submit" disabled={isTransferring} style={{ flex: 2, backgroundColor: isTransferring ? '#94a3b8' : '#005a9c', color: 'white', border: 'none', padding: '12px', fontWeight: '600', borderRadius: '4px', cursor: isTransferring ? 'not-allowed' : 'pointer' }}>
-                    {isTransferring ? 'Processing...' : 'Submit Transfer'}
+
+                <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => setActiveModal(null)} className="btn-blue-outline" style={{ flex: 1, padding: '14px', minWidth: '120px' }}>Cancel</button>
+                  <button type="submit" disabled={isTransferring} className="btn-blue-solid" style={{ flex: 2, padding: '14px', minWidth: '150px' }}>
+                    {isTransferring ? 'Processing...' : 'Make transfer'}
                   </button>
                 </div>
               </form>
@@ -327,230 +418,341 @@ export default function ClientDashboard() {
         </div>
       )}
 
-      {/* TOP BAR */}
-      <div className="utility-bar">
-        <div className="brand">
-          <div className="brand-icon">A</div>
-          APEX VAULT
+      {/* --- DESKTOP HEADER --- */}
+      <div className="desktop-header">
+        <div className="top-utility-bar">
+          <div className="brand-logo">Global <span>Vault</span></div>
+          <div className="search-bar">
+            <span style={{ color: '#0045a5' }}>🔍</span>
+            <input type="text" placeholder="G.V. Smart Assistant" />
+          </div>
+          <div className="top-actions">
+            <span onClick={() => triggerMockFeature('Notifications')}>Notifications <b style={{ color: '#e31837' }}>1</b></span>
+            <span onClick={() => changeView('profile')}>Profile & settings ⌄</span>
+            <span onClick={() => triggerMockFeature('Help')}>Need help? ⌄</span>
+            <span onClick={handleLogout}>Log out</span>
+          </div>
         </div>
-        <button className="mobile-nav-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>☰</button>
-        <div className="utility-links">
-          <button className="u-link" onClick={handleLogout}>Log Off</button>
-          <button className="u-link" onClick={() => triggerMockFeature('My Profile')}>👤 My Profile</button>
-          <button className="u-link" onClick={() => triggerMockFeature('My Messages')}>✉️ My Messages</button>
-          <button className="u-link" onClick={() => triggerMockFeature('Security Center')}>🔒 Security Center</button>
-          <div className="search-box">
-            <input type="text" placeholder="Search" />
-            <button onClick={() => triggerMockFeature('Search')}>▶</button>
+        <div className="main-nav">
+          <div className="nav-container">
+            <div className={`nav-tab ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => changeView('dashboard')}>Dashboard</div>
+            <div className={`nav-tab ${currentView === 'transactions' ? 'active' : ''}`} onClick={() => changeView('transactions')}>Accounts</div>
+            <div className="nav-tab" onClick={() => setActiveModal('transfer')}>Transfer & pay ⌄</div>
+            <div className={`nav-tab ${currentView === 'security' ? 'active' : ''}`} onClick={() => changeView('security')}>Security & limits</div>
+            <div className="nav-tab" onClick={() => generatePDFStatement()}>Products & offers</div>
           </div>
         </div>
       </div>
 
-      {/* MOBILE DROP DOWN NAV */}
-      <div className={`mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
-        <div className="nav-tab" onClick={() => { setActiveModal('transfer'); setMobileMenuOpen(false); }}>⇄ Transfers & Payments</div>
-        <div className="nav-tab" onClick={() => { triggerMockFeature('My Accounts'); setMobileMenuOpen(false); }}>💳 My Accounts</div>
-        <div className="nav-tab" onClick={() => { generatePDFStatement(); setMobileMenuOpen(false); }}>📄 Download Statements</div>
-        <div className="nav-tab" onClick={() => { triggerMockFeature('Settings'); setMobileMenuOpen(false); }}>⚙️ Settings</div>
-        <div className="nav-tab" onClick={handleLogout} style={{ color: '#fca5a5' }}>🚪 Log Off</div>
+      {/* --- MOBILE HEADER --- */}
+      <div className="mobile-header">
+        <div className="mobile-top-row">
+          <span className="hamburger" onClick={() => triggerMockFeature('Menu')}>☰</span>
+          <div className="mobile-search">
+            <span>🔍</span>
+            <input type="text" placeholder="Smart Assistant" />
+            <span>🎤</span>
+          </div>
+        </div>
+        <div className="mobile-greeting">{username}.</div>
+        <div className="mobile-pills">
+          <div className="pill" onClick={() => triggerMockFeature('Rewards')}>Rewards</div>
+          <div className="pill" onClick={() => triggerMockFeature('Deposit Check')}>Deposit check</div>
+          <div className="pill" onClick={() => setActiveModal('transfer')}>Send | Zelle®</div>
+          <div className="pill" onClick={() => generatePDFStatement()}>•••</div>
+        </div>
       </div>
 
-      {/* DESKTOP MAIN NAV */}
-      <div className="main-nav">
-        <div className="nav-tab" onClick={() => triggerMockFeature('Our Products')}>Our Products ▼</div>
-        <div className="nav-tab" onClick={() => triggerMockFeature('Advice Center')}>Advice Center ▼</div>
-        <div className="nav-tab" onClick={() => triggerMockFeature('Why Join Us')}>Why Join Us</div>
-        <div className="nav-tab active">My Accounts</div>
-        <div className="nav-tab" onClick={() => triggerMockFeature('My Account Tools')}>My Account Tools ▼</div>
-        <div className="nav-tab" onClick={() => triggerMockFeature('Claims')}>Claims ▼</div>
-        <div className="nav-tab" onClick={() => generatePDFStatement()}>My Offers</div>
-      </div>
+      {/* --- DESKTOP HERO --- */}
+      {currentView === 'dashboard' && (
+        <div className="desktop-hero-container">
+          <div className="desktop-hero">
+            <div className="hero-text">
+              <h1>Good morning, {username.split(' ')[0] || 'User'}.</h1>
+              <p>We're looking forward to helping you today.</p>
+            </div>
+            <div className="promo-card">
+              <h3>Private Wealth Market</h3>
+              <p>Earn money while you save when you open a high yield Market account.</p>
+              <button className="btn-red" onClick={() => triggerMockFeature('Market Account')}>Learn more ›</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="container">
+      {/* --- MAIN CONTENT CONTAINER --- */}
+      <div className="main-container">
         
-        {/* WELCOME AREA */}
-        <div className="welcome-banner">
-          <div>
-            <h1>Welcome</h1>
-            <div className="welcome-meta">Apex Number - {username} &nbsp;|&nbsp; Last visit: {lastLoginTime}</div>
+        {currentView === 'dashboard' && (
+          <div className="action-row">
+            <button className="btn-blue-solid" onClick={() => setActiveModal('transfer')}>Zelle® ›</button>
+            <button className="btn-blue-solid" onClick={() => triggerMockFeature('Bill Pay')}>Pay bills ›</button>
+            <button className="btn-blue-outline" onClick={() => generatePDFStatement()}>View statements</button>
+            <button className="btn-blue-outline" onClick={() => triggerMockFeature('More')}>•••</button>
           </div>
-          <div className="tax-promo">
-            <strong style={{ color: '#002d5b' }}>Make tax time less taxing.</strong><br/>
-            Find forms, tips and more.<br/>
-            <button onClick={() => triggerMockFeature('Tax Center')} style={{ background: 'none', border: 'none', color: '#005a9c', cursor: 'pointer', padding: 0, marginTop: '4px', fontWeight: '600' }}>» Explore Tax Center</button>
-          </div>
-        </div>
+        )}
 
-        <div className="dashboard-grid">
-          
-          {/* LEFT COLUMN: Accounts List */}
-          <div>
-            <div className="widget">
-              <div className="widget-header">
-                <span>My Accounts Summary</span>
-                <span className="widget-action" onClick={() => triggerMockFeature('Customize')}>⚙ Customize</span>
-              </div>
-              
-              {/* Banking Section */}
-              <div className="section-bar">
-                <span className="section-title"><span style={{ color: '#6a9b2d' }}>➖</span> Banking (3)</span>
-                <span className="section-meta">Balance / Available</span>
-              </div>
-              
-              {/* Flexbox Account Rows (Mobile Friendly) */}
-              <div className="account-row">
-                <div className="acc-info">
-                  <span className="acc-link" onClick={() => triggerMockFeature('Checking Details')}>Classic Checking</span>
-                  <span className="acc-desc">Primary Operations</span>
-                </div>
-                <div className="acc-action">
-                  <button className="i-want-to" onClick={() => setActiveModal('transfer')}>I want to</button>
-                </div>
-                <div className="acc-balance">${mainBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
-              </div>
-
-              <div className="account-row">
-                <div className="acc-info">
-                  <span className="acc-link" onClick={() => triggerMockFeature('Savings Details')}>High Yield Savings</span>
-                  <span className="acc-desc">Secure Asset Vault</span>
-                </div>
-                <div className="acc-action">
-                  <button className="i-want-to" onClick={() => setActiveModal('transfer')}>I want to</button>
-                </div>
-                <div className="acc-balance">${vaultBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
-              </div>
-
-              <div className="account-row">
-                <div className="acc-info">
-                  <span className="acc-link" onClick={() => triggerMockFeature('Credit Card Details')}>World MasterCard</span>
-                  <span className="acc-desc">55**-****-7210</span>
-                </div>
-                <div className="acc-action">
-                  <button className="i-want-to" onClick={() => triggerMockFeature('Pay Card')}>I want to</button>
-                </div>
-                <div className="acc-balance" style={{ color: '#64748b' }}>$11,325.96</div>
-              </div>
-
-              {/* Insurance Section */}
-              <div className="section-bar" style={{ borderTop: 'none' }}>
-                <span className="section-title"><span style={{ color: '#6a9b2d' }}>➖</span> Insurance (2)</span>
-                <span className="section-meta">Balance / Amount Owed</span>
-              </div>
-
-              <div className="account-row">
-                <div className="acc-info">
-                  <span className="acc-link" onClick={() => triggerMockFeature('Renters Insurance')}>Renter's Insurance</span>
-                  <span className="acc-desc">Policy: ***2315</span>
-                </div>
-                <div className="acc-action">
-                  <button className="i-want-to" onClick={() => triggerMockFeature('Insurance Options')}>I want to</button>
-                </div>
-                <div className="acc-balance">$0.00</div>
-              </div>
-
-              <div className="account-row">
-                <div className="acc-info">
-                  <span className="acc-link" onClick={() => triggerMockFeature('Auto Insurance')}>Motor Home</span>
-                  <span className="acc-desc">Policy: ***7500</span>
-                </div>
-                <div className="acc-action">
-                  <button className="i-want-to" onClick={() => triggerMockFeature('Insurance Options')}>I want to</button>
-                </div>
-                <div className="acc-balance">$0.00</div>
-              </div>
-
-              {/* Investments Section */}
-              <div className="section-bar" style={{ borderTop: 'none' }}>
-                <span className="section-title"><span style={{ color: '#6a9b2d' }}>➖</span> Investments</span>
-              </div>
-              <div style={{ padding: '20px', fontSize: '13px', color: '#475569', backgroundColor: '#fff' }}>
-                Proven performance and value — that's why you should consider investing with Apex.
-                <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-                  <div><strong style={{ color: '#002d5b' }}>MUTUAL FUNDS</strong><br/><span style={{ color: '#64748b' }}>Proven performance with no sales fees</span></div>
-                  <button onClick={() => triggerMockFeature('Mutual Funds')} style={{ background: 'none', border: 'none', color: '#6a9b2d', fontWeight: 'bold', cursor: 'pointer' }}>Learn More</button>
-                </div>
-                <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', paddingBottom: '12px' }}>
-                  <div><strong style={{ color: '#002d5b' }}>BROKERAGE</strong><br/><span style={{ color: '#64748b' }}>Make online trades for as low as $5.95</span></div>
-                  <button onClick={() => triggerMockFeature('Brokerage')} style={{ background: 'none', border: 'none', color: '#6a9b2d', fontWeight: 'bold', cursor: 'pointer' }}>Learn More</button>
-                </div>
-                <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                  <button className="btn-green" onClick={() => triggerMockFeature('Add Account')} style={{ width: 'auto' }}>Add a Non-Apex Account</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN: The Interactive Widgets */}
-          <div>
+        {/* VIEW: DASHBOARD */}
+        {currentView === 'dashboard' && (
+          <div className="dashboard-grid">
             
-            {/* Promo Widget */}
-            <div className="widget">
-              <div className="widget-header"><span>Member Advantages</span><span className="widget-action">?</span></div>
-              <div className="promo-content">
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#002d5b' }}>It's easy to find out how much life insurance you may need.</h3>
-                <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>Our new life insurance calculator can help.</p>
-                <button className="btn-green" onClick={() => triggerMockFeature('Calculator')}>Check It Out</button>
+            {/* Left: Accounts List */}
+            <div>
+              <div className="card-header-flex">
+                <h2 className="card-title">Accounts</h2>
+                <span className="card-meta" onClick={() => triggerMockFeature('Settings')}>⚙ Account settings</span>
               </div>
-            </div>
-
-            {/* My Goals Widget */}
-            <div className="widget">
-              <div className="widget-header"><span>My Goals</span><span className="widget-action">✕</span></div>
-              <div className="goal-box">
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#002d5b', marginBottom: '16px' }}>Achievement starts with a goal.</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ fontSize: '28px' }}>🌴</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '12px', fontWeight: '700', color: '#475569' }}>Retirement Fund</div>
-                    <div className="progress-track"><div className="progress-fill"></div></div>
+              
+              <div className="us-card" style={{ padding: '0', border: 'none', background: 'transparent', boxShadow: 'none' }}>
+                <div className="list-header">CHECKING & SAVINGS</div>
+                
+                <div className="account-item" onClick={() => changeView('transactions')}>
+                  <div className="acc-inner">
+                    <div className="acc-left">
+                      <div className="acc-icon-box"></div>
+                      <div>
+                        <div className="acc-name">Checking <span className="acc-number">...8842</span></div>
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Global Vault</div>
+                      </div>
+                    </div>
+                    <div className="acc-right">
+                      <div className="acc-balance">${mainBalance.toLocaleString('en-US', {minimumFractionDigits: 2})} <span style={{fontSize: '18px', color: '#6b7280', verticalAlign: 'middle'}}>›</span></div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a' }}>65%</div>
+                  <div style={{ width: '100%' }}>
+                    <button className="btn-blue-outline" style={{ width: '100%', maxWidth: '200px' }} onClick={(e) => { e.stopPropagation(); setActiveModal('transfer'); }}>Make a transfer ›</button>
+                  </div>
                 </div>
-                <button className="btn-green" style={{ marginTop: '20px' }} onClick={() => triggerMockFeature('Goals Setup')}>Get Started With My Goals</button>
+
+                <div className="account-item" onClick={() => changeView('transactions')}>
+                  <div className="acc-inner">
+                    <div className="acc-left">
+                      <div className="acc-icon-box red"></div>
+                      <div>
+                        <div className="acc-name">Savings Vault <span className="acc-number">...1195</span></div>
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Global Vault</div>
+                      </div>
+                    </div>
+                    <div className="acc-right">
+                      <div className="acc-balance">${vaultBalance.toLocaleString('en-US', {minimumFractionDigits: 2})} <span style={{fontSize: '18px', color: '#6b7280', verticalAlign: 'middle'}}>›</span></div>
+                    </div>
+                  </div>
+                  <div style={{ width: '100%' }}>
+                    <button className="btn-blue-outline" style={{ width: '100%', maxWidth: '200px' }} onClick={(e) => { e.stopPropagation(); setActiveModal('transfer'); }}>Make a transfer ›</button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 20px', fontSize: '14px', color: '#6b7280', flexWrap: 'wrap', gap: '8px' }}>
+                  <span>Total balance</span>
+                  <span style={{ fontWeight: '600', color: '#1f2937' }}>${totalAssets.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                </div>
               </div>
             </div>
 
-            {/* Pay Bills / Transfer Funds Widget */}
-            <div className="widget">
-              <div className="widget-header"><span>Pay Bills & Transfer Funds</span><span className="widget-action">? ✕</span></div>
-              <div className="action-group">
-                <p style={{ margin: '0 0 16px 0', fontSize: '13px', fontWeight: '600', color: '#475569' }}>Pay Bills or schedule a transfer between accounts.</p>
-                <button className="btn-action" onClick={() => triggerMockFeature('Bill Pay')}>
-                  📅 Pay Bills
-                </button>
-                <button className="btn-action" onClick={() => setActiveModal('transfer')}>
-                  🔄 Transfer Funds
-                </button>
-                <button onClick={() => triggerMockFeature('Advanced Bill Pay')} style={{ background: 'none', border: 'none', color: '#005a9c', fontSize: '12px', marginTop: '8px', cursor: 'pointer', fontWeight: '600' }}>» Advanced Bill Pay</button>
+            {/* Right: Cash Flow */}
+            <div>
+              <div className="card-header-flex">
+                <span className="card-meta" style={{ marginLeft: 'auto', color: '#6b7280' }}>Last login: {lastLoginTime}</span>
               </div>
-            </div>
-
-            {/* Track Money Widget */}
-            <div className="widget">
-              <div className="widget-header"><span>Track Your Money</span><span className="widget-action">? EXPAND ✕</span></div>
-              <div style={{ padding: '20px', background: '#f8fafc' }}>
-                <div style={{ textAlign: 'center', fontSize: '12px', color: '#64748b', marginBottom: '16px', fontWeight: '500' }}>01/01/2026 - Present</div>
-                
-                <div className="track-row">
-                  <span>Money In</span>
-                  <span className="txt-green">+ ${totalIn.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+              <div className="us-card">
+                <h3 style={{ margin: '0 0 24px 0', fontSize: '18px', color: '#1f2937' }}>Cash flow last 30 days</h3>
+                <div className="flow-row">
+                  <div className="flow-block">
+                    <div className="flow-label">Money in</div>
+                    <div className="flow-val val-in">+{totalIn > 0 ? '$' : ''}{totalIn.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                  </div>
+                  <div className="flow-block">
+                    <div className="flow-label">Money out</div>
+                    <div className="flow-val val-out">${totalOut.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                  </div>
                 </div>
-                <div className="track-row">
-                  <span>Money Out</span>
-                  <span className="txt-red">- ${totalOut.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                </div>
-                <div className="track-row total">
-                  <span>Total</span>
-                  <span style={{ color: '#002d5b' }}>${(totalIn - totalOut).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                </div>
-                
-                <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                  <button onClick={() => generatePDFStatement()} style={{ background: 'none', border: 'none', color: '#6a9b2d', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>» Go to Track Your Money</button>
-                </div>
+                <button className="btn-blue-outline" style={{ width: '100%' }} onClick={() => changeView('transactions')}>Continue to Cash flow ›</button>
               </div>
             </div>
 
           </div>
+        )}
+
+        {/* VIEW: TRANSACTIONS */}
+        {currentView === 'transactions' && (
+          <div className="us-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+              <h2 className="card-title">Transaction History</h2>
+              <button className="btn-blue-outline" onClick={generatePDFStatement}>Export PDF</button>
+            </div>
+            
+            <div className="filter-pills">
+              <button className={`f-pill ${txFilter === 'All' ? 'active' : ''}`} onClick={() => { simulateNetworkLatency(() => setTxFilter('All')); }}>All</button>
+              <button className={`f-pill ${txFilter === 'approved' ? 'active' : ''}`} onClick={() => { simulateNetworkLatency(() => setTxFilter('approved')); }}>Completed</button>
+              <button className={`f-pill ${txFilter === 'pending' ? 'active' : ''}`} onClick={() => { simulateNetworkLatency(() => setTxFilter('pending')); }}>Pending</button>
+            </div>
+
+            <div className="table-wrapper">
+              <table className="tx-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Account</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTransactions.length === 0 && (<tr><td colSpan="5" style={{ textAlign: 'center', padding: '32px', color: '#6b7280' }}>No transactions found.</td></tr>)}
+                  {filteredTransactions.map((t) => (
+                    <tr key={t.id}>
+                      <td style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>{t.date}</td>
+                      <td className="tx-desc">{t.desc}</td>
+                      <td style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>...{t.account === 'Vault' ? '1195' : '8842'}</td>
+                      <td>
+                        <span className="status-badge" style={{ color: t.status === 'approved' ? '#166534' : '#b45309', backgroundColor: t.status === 'approved' ? '#dcfce7' : '#fef3c7' }}>
+                          {t.status === 'approved' ? 'Completed' : t.status}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: '600', color: t.type === 'Credit' ? '#166534' : '#1f2937', whiteSpace: 'nowrap' }}>
+                        {t.type === 'Credit' ? '+' : '-'}${Number(t.amount).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: PROFILE */}
+        {currentView === 'profile' && (
+          <div className="dashboard-grid">
+            <div className="us-card">
+              <h2 className="card-title" style={{ marginBottom: '24px' }}>Profile details</h2>
+              <div className="form-grid">
+                <div className="input-group">
+                  <label className="input-label">Legal Name</label>
+                  <input type="text" className="input-field" value={username} disabled />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Date of Birth</label>
+                  <input type="text" className="input-field" value="XX/XX/1975" disabled />
+                </div>
+                <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="input-label">Physical Address</label>
+                  <input type="text" className="input-field" value="Restricted via KYC Compliance" disabled />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Email Address</label>
+                  <input type="email" className="input-field" defaultValue={`${username.toLowerCase().replace(/\s/g, '')}@securemail.com`} />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Mobile Phone</label>
+                  <input type="tel" className="input-field" defaultValue="+1 (555) ***-**42" />
+                </div>
+              </div>
+              <button className="btn-blue-solid" style={{ width: '100%', maxWidth: '200px' }} onClick={() => triggerMockFeature('Update Profile')}>Save changes</button>
+            </div>
+
+            <div className="us-card">
+              <h2 className="card-title" style={{ marginBottom: '24px' }}>Notifications</h2>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', fontSize: '15px', cursor: 'pointer' }}>
+                <input type="checkbox" defaultChecked style={{ width: '18px', height: '18px', flexShrink: 0 }} /> Email alerts for transfers
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', fontSize: '15px', cursor: 'pointer' }}>
+                <input type="checkbox" defaultChecked style={{ width: '18px', height: '18px', flexShrink: 0 }} /> SMS alerts for logins
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', fontSize: '15px', cursor: 'pointer' }}>
+                <input type="checkbox" defaultChecked style={{ width: '18px', height: '18px', flexShrink: 0 }} /> Monthly PDF statements
+              </label>
+              <button className="btn-blue-outline" style={{ width: '100%' }} onClick={() => triggerMockFeature('Save Preferences')}>Update preferences</button>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: SECURITY */}
+        {currentView === 'security' && (
+          <div className="dashboard-grid">
+            <div>
+              <div className="us-card">
+                <h2 className="card-title" style={{ marginBottom: '24px' }}>Change password</h2>
+                <div className="form-grid">
+                  <div className="input-group" style={{ gridColumn: '1 / -1', marginBottom: '0' }}>
+                    <label className="input-label">Current password</label>
+                    <input type="password" className="input-field" placeholder="••••••••" />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: '0' }}>
+                    <label className="input-label">New password</label>
+                    <input type="password" className="input-field" />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: '0' }}>
+                    <label className="input-label">Confirm password</label>
+                    <input type="password" className="input-field" />
+                  </div>
+                </div>
+                <button className="btn-blue-solid" style={{ marginTop: '24px', width: '100%', maxWidth: '200px' }} onClick={() => triggerMockFeature('Update Password')}>Update password</button>
+              </div>
+
+              <div className="us-card">
+                <h2 className="card-title" style={{ marginBottom: '24px' }}>Recent logins</h2>
+                {mockLoginHistory.map((log) => (
+                  <div key={log.id} style={{ padding: '16px 0', borderBottom: '1px solid var(--border-light)' }}>
+                    <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-main)' }}>{log.device}</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>{log.date} • {log.location}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="us-card">
+                <h2 className="card-title" style={{ marginBottom: '24px' }}>Account limits</h2>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>ACCOUNT TIER</div>
+                  <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--hero-blue)' }}>Private Wealth Elite</div>
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>DAILY TRANSFER LIMIT</div>
+                  <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-main)' }}>$50,000.00</div>
+                </div>
+                <div style={{ marginBottom: '24px' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>INTERNATIONAL WIRES</div>
+                  <div style={{ fontSize: '16px', fontWeight: '600', color: '#166534', background: '#dcfce7', display: 'inline-block', padding: '4px 12px', borderRadius: '16px' }}>Authorized</div>
+                </div>
+              </div>
+
+              <div className="us-card">
+                <h2 className="card-title" style={{ marginBottom: '24px' }}>Two-Factor Authentication</h2>
+                <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: '0 0 20px 0', lineHeight: 1.5 }}>Secure your account using an authenticator app or SMS.</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', border: '1px solid var(--border-light)', borderRadius: '8px', flexWrap: 'wrap', gap: '12px' }}>
+                  <span style={{ fontWeight: '600', fontSize: '14px' }}>SMS Authentication</span>
+                  <span style={{ color: '#166534', fontWeight: '700', fontSize: '12px', background: '#dcfce7', padding: '4px 10px', borderRadius: '12px' }}>ENABLED</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* --- MOBILE BOTTOM NAV --- */}
+      <div className="bottom-nav">
+        <div className={`b-nav-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => changeView('dashboard')}>
+          <span className="b-nav-icon">⌂</span>
+          <span>Accounts</span>
+        </div>
+        <div className={`b-nav-item ${currentView === 'transactions' ? 'active' : ''}`} onClick={() => changeView('transactions')}>
+          <span className="b-nav-icon">⇄</span>
+          <span>Ledger</span>
+        </div>
+        <div className="b-nav-item" onClick={() => setActiveModal('transfer')}>
+          <span className="b-nav-icon" style={{ fontSize: '28px', color: 'var(--brand-red)', marginTop: '-8px' }}>⊕</span>
+          <span>Transfer</span>
+        </div>
+        <div className={`b-nav-item ${currentView === 'profile' ? 'active' : ''}`} onClick={() => changeView('profile')}>
+          <span className="b-nav-icon">👤</span>
+          <span>Profile</span>
+        </div>
+        <div className={`b-nav-item ${currentView === 'security' ? 'active' : ''}`} onClick={() => changeView('security')}>
+          <span className="b-nav-icon">🔒</span>
+          <span>Security</span>
         </div>
       </div>
     </>
