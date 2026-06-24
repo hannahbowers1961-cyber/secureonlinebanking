@@ -11,6 +11,11 @@ export default function ClientDashboard() {
   
   // App State
   const [transactions, setTransactions] = useState([]);
+  const [activeModal, setActiveModal] = useState(null); 
+  const [systemAlert, setSystemAlert] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Transfer State
   const [transferAmount, setTransferAmount] = useState('');
   const [transferDesc, setTransferDesc] = useState('');
   const [recipientAccount, setRecipientAccount] = useState('');
@@ -19,8 +24,6 @@ export default function ClientDashboard() {
   const [isTransferring, setIsTransferring] = useState(false);
 
   // Baselines
-  const mainAccountNo = "•••• •••• •••• 8842";
-  const vaultAccountNo = "•••• •••• •••• 1195";
   const initialMain = 250000.00;
   const initialVault = 1500000.00;
 
@@ -34,16 +37,13 @@ export default function ClientDashboard() {
     fetchCloudTransactions(currentUser);
   }, []);
 
-  // CLOUD: Fetch live data from Supabase for THIS specific user
   const fetchCloudTransactions = async (user) => {
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
       .eq('user_id', user)
       .order('id', { ascending: false });
-    
     if (data) setTransactions(data);
-    if (error) console.error("Error fetching cloud data:", error);
   };
 
   const calculateBalance = (targetAccount, startingAmount) => {
@@ -60,9 +60,8 @@ export default function ClientDashboard() {
 
   const mainBalance = calculateBalance('Main', initialMain);
   const vaultBalance = calculateBalance('Vault', initialVault);
-  const netWorth = mainBalance + vaultBalance;
+  const totalAssets = mainBalance + vaultBalance;
 
-  // CLOUD: Send new transfer request to Supabase
   const handleTransferSubmit = async (e) => {
     e.preventDefault();
     setIsTransferring(true);
@@ -71,7 +70,7 @@ export default function ClientDashboard() {
 
     const availableFunds = fromAccount === 'Main' ? mainBalance : vaultBalance;
     if (amountVal > availableFunds) {
-      setSuccessMsg('❌ ERROR: Insufficient funds available.'); 
+      setSuccessMsg('❌ ERROR: Insufficient funds.'); 
       setTimeout(() => setSuccessMsg(''), 4000); 
       setIsTransferring(false);
       return;
@@ -79,7 +78,7 @@ export default function ClientDashboard() {
 
     const newTx = {
       type: 'Debit',
-      desc: transferDesc || `Wire Transfer: ${recipientAccount}`,
+      desc: transferDesc || `Transfer: ${recipientAccount}`,
       amount: amountVal,
       status: 'pending',
       account: fromAccount,
@@ -90,280 +89,380 @@ export default function ClientDashboard() {
     const { error } = await supabase.from('transactions').insert([newTx]);
 
     if (!error) {
-      fetchCloudTransactions(username); // Refresh the list from the cloud
+      fetchCloudTransactions(username);
       setTransferAmount(''); setTransferDesc(''); setRecipientAccount('');
-      setSuccessMsg('✓ Transfer logged securely. Awaiting manager verification.'); 
-    } else {
-      setSuccessMsg('❌ ERROR: Secure connection to vault failed.');
+      setSuccessMsg('✓ Transfer initiated. Awaiting manager approval.'); 
+      setTimeout(() => { setActiveModal(null); setSuccessMsg(''); }, 3000);
     }
-    
     setIsTransferring(false);
-    setTimeout(() => setSuccessMsg(''), 5000);
   };
 
   const generatePDFStatement = () => {
     const doc = new jsPDF();
-    doc.setFontSize(24); doc.setTextColor(17, 46, 69); doc.text("Apex Global Vault", 14, 22);
-    doc.setFontSize(10); doc.setTextColor(100, 100, 100); doc.text("PRIVATE WEALTH MANAGEMENT", 14, 30);
-    doc.setFontSize(12); doc.setTextColor(50, 50, 50); doc.text(`Official Account Statement`, 14, 45);
-    doc.setFontSize(10);
-    doc.text(`Account Holder: ${username}`, 14, 52);
-    doc.text(`Date Generated: ${new Date().toLocaleDateString()}`, 14, 58);
-    doc.text(`Total Verified Assets: $${netWorth.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 64);
-
-    const tableColumn = ["Execution Date", "Description", "Source/Dest", "Status", "Amount"];
-    const tableRows = transactions.map(t => [
-      t.date, t.desc, t.account || 'Main', t.status.toUpperCase(),
-      `${t.type === 'Credit' ? '+' : '-'}$${Number(t.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-    ]);
-
-    autoTable(doc, {
-      startY: 75, head: [tableColumn], body: tableRows, theme: 'striped',
-      headStyles: { fillColor: [17, 46, 69] }, styles: { fontSize: 9 }, alternateRowStyles: { fillColor: [245, 245, 245] }
-    });
-
-    const pageCount = doc.internal.getNumberOfPages();
-    for(let i = 1; i <= pageCount; i++) {
-      doc.setPage(i); doc.setFontSize(8); doc.setTextColor(150);
-      doc.text('CONFIDENTIAL: This document is secured by Apex Global Vault. Do not share.', doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
-    }
-    doc.save(`Apex_Statement_${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.text("Apex Global Vault - Activity Statement", 14, 22);
+    const tableRows = transactions.map(t => [t.date, t.desc, t.account || 'Main', t.status.toUpperCase(), `${t.type === 'Credit' ? '+' : '-'}$${Number(t.amount).toLocaleString()}`]);
+    autoTable(doc, { startY: 30, head: [["Date", "Description", "Account", "Status", "Amount"]], body: tableRows, theme: 'grid' });
+    doc.save(`Activity_Statement.pdf`);
   };
 
   const handleLogout = () => {
     sessionStorage.removeItem('client_authenticated'); 
-    sessionStorage.removeItem('current_user');
     window.location.href = '/client-login';
   };
 
-  // UPGRADED PREMIUM CSS
+  const triggerMockFeature = (feature) => {
+    setSystemAlert(`Module "${feature}" is under secure maintenance.`);
+    setTimeout(() => setSystemAlert(''), 3000);
+  };
+
   const styles = `
-    * { box-sizing: border-box; }
-    html, body { overflow-x: hidden; margin: 0; padding: 0; width: 100%; background-color: #f1f5f9; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: #f4f5f7; margin: 0; padding: 0; color: #333; -webkit-font-smoothing: antialiased; }
     
-    .dash-wrapper { min-height: 100vh; font-family: 'Inter', Arial, sans-serif; color: #1e293b; overflow-x: hidden; width: 100%; }
+    .app-wrapper { display: flex; min-height: 100vh; position: relative; }
     
-    /* Modern Header */
-    .dash-header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #dc2626; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    /* LEFT SIDEBAR */
+    .sidebar { width: 260px; background-color: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; z-index: 50; transition: transform 0.3s ease; }
+    .sidebar-header { padding: 24px; border-bottom: 1px solid #f1f5f9; }
+    .brand-title { color: #00365b; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; margin: 0; display: flex; align-items: center; gap: 8px; }
+    .fdic-text { font-size: 10px; color: #64748b; margin-top: 8px; display: block; }
     
-    /* Grid Layout */
-    .dash-main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 32px 16px; display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+    /* Mobile Close Button & Backdrop */
+    .close-menu-btn { display: none; background: none; border: none; font-size: 28px; color: #00365b; cursor: pointer; padding: 0; line-height: 1; }
+    .mobile-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 54, 91, 0.5); z-index: 40; backdrop-filter: blur(2px); opacity: 0; visibility: hidden; transition: all 0.3s ease; }
+    .mobile-backdrop.open { opacity: 1; visibility: visible; }
     
-    /* Premium Cards */
-    .card { background-color: white; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.025); border: 1px solid #e2e8f0; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-    .card:hover { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
-    .card-header { background-color: #f8fafc; padding: 20px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-    .card-title { margin: 0; fontSize: 18px; color: #0f172a; font-weight: 700; letter-spacing: -0.5px; }
+    .nav-list { list-style: none; padding: 12px 0; margin: 0; flex: 1; overflow-y: auto; }
+    .nav-item { padding: 12px 24px; display: flex; align-items: center; gap: 12px; color: #475569; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .nav-item:hover { background-color: #f8fafc; color: #00365b; }
+    .nav-item.active { border-left: 4px solid #689221; color: #00365b; font-weight: 600; background-color: #f1f5f9; padding-left: 20px; }
+    .nav-icon { font-size: 18px; color: #94a3b8; }
+    .nav-item.active .nav-icon { color: #00365b; }
     
-    /* Virtual Credit Card Styling */
-    .credit-card { background: linear-gradient(135deg, #112e45 0%, #000000 100%); color: #fff; padding: 24px; border-radius: 16px; position: relative; overflow: hidden; box-shadow: 0 10px 25px rgba(17,46,69,0.4); margin-bottom: 24px; }
-    .credit-card::after { content: ''; position: absolute; top: 0; right: 0; width: 150px; height: 150px; background: rgba(255,255,255,0.05); border-radius: 50%; transform: translate(30%, -30%); }
-    .cc-chip { width: 40px; height: 30px; background: linear-gradient(135deg, #ffd700, #b8860b); border-radius: 6px; margin-bottom: 24px; opacity: 0.9; }
-    .cc-number { font-size: 20px; font-family: monospace; letter-spacing: 2px; margin-bottom: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-    .cc-bottom { display: flex; justify-content: space-between; align-items: flex-end; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #cbd5e1; }
+    .sidebar-footer { padding: 16px 24px; border-top: 1px solid #f1f5f9; }
+    .logout-btn { display: flex; align-items: center; gap: 8px; color: #991b1b; font-size: 14px; font-weight: 600; cursor: pointer; background: none; border: none; padding: 0; width: 100%; }
+
+    /* MAIN CONTENT AREA */
+    .main-area { flex: 1; display: flex; flex-direction: column; overflow-x: hidden; }
     
-    /* Quick Actions Menu */
-    .quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-    .action-btn { background-color: #f1f5f9; border: 1px solid #e2e8f0; color: #334155; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s; }
-    .action-btn:hover { background-color: #e2e8f0; color: #0f172a; border-color: #cbd5e1; transform: translateY(-2px); }
+    .top-header { display: flex; justify-content: flex-end; align-items: center; padding: 24px 40px; background-color: #f4f5f7; }
+    .greeting-box { text-align: right; }
+    .greeting-text { font-size: 18px; color: #00365b; font-weight: 600; margin: 0; }
+    .last-login { font-size: 11px; color: #64748b; margin-top: 4px; }
     
-    /* Modern Inputs */
-    .input-field { width: 100%; padding: 12px 16px; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; background-color: #f8fafc; }
-    .input-field:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); background-color: white; }
+    .mobile-menu-btn { display: none; background: none; border: none; font-size: 24px; color: #00365b; cursor: pointer; }
+
+    .dashboard-content { padding: 0 40px 40px 40px; max-width: 1200px; margin: 0 auto; width: 100%; }
+
+    /* ACCOUNTS GRID */
+    .accounts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+
+    /* HERO CARDS */
+    .hero-card { background: white; border-radius: 12px; padding: 24px 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; border-top: 6px solid #00365b; display: flex; flex-direction: column; }
+    .hero-card.savings { border-top-color: #689221; }
     
-    /* Beautiful Table */
-    .table-container { overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; }
-    .responsive-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; min-width: 500px; }
-    .responsive-table th { padding: 16px 24px; background-color: white; color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 12px; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; }
-    .responsive-table td { padding: 16px 24px; border-bottom: 1px solid #f1f5f9; }
-    .responsive-table tr:hover td { background-color: #f8fafc; }
+    .hero-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .hero-icon { width: 40px; height: 40px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #00365b; font-weight: bold; }
+    .hero-card.savings .hero-icon { color: #689221; }
+    .hero-title { font-size: 18px; font-weight: 700; color: #00365b; margin: 0; letter-spacing: -0.5px; }
     
-    /* Mobile Constraints */
-    @media (max-width: 950px) {
-      .dash-main { grid-template-columns: 1fr; }
-      .dash-header { padding: 16px; flex-direction: column; gap: 16px; align-items: flex-start; }
-      .cc-number { font-size: 18px; }
+    .hero-balances { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; flex: 1; }
+    
+    .available-bal { text-align: left; }
+    .available-bal-amount { font-size: 40px; font-weight: 800; color: #00365b; letter-spacing: -1px; line-height: 1; }
+    .available-bal-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-top: 8px; font-weight: 600; }
+    
+    .hero-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: auto; }
+    .quick-link { color: #005a9c; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; background: none; border: none; padding: 0; }
+    .quick-link:hover { text-decoration: underline; color: #00365b; }
+
+    /* WIDGET GRID */
+    .widget-grid { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 24px; }
+    
+    .widget { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.03); display: flex; flex-direction: column; }
+    .widget-title { font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin: 0 0 20px 0; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; }
+    
+    /* Account Summary Widget */
+    .summary-row { display: flex; justify-content: space-between; margin-bottom: 16px; align-items: center; }
+    .summary-label { font-size: 14px; color: #475569; font-weight: 500; }
+    .summary-value { font-size: 16px; color: #00365b; font-weight: 700; }
+    .view-all-link { text-align: right; margin-top: auto; color: #005a9c; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+    /* Move Money Widget */
+    .move-money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .action-btn { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; gap: 12px; cursor: pointer; transition: all 0.2s; }
+    .action-btn:hover { background: #00365b; border-color: #00365b; }
+    .action-btn:hover * { color: white !important; }
+    .action-icon { font-size: 24px; color: #005a9c; }
+    .action-text { font-size: 12px; font-weight: 600; color: #475569; text-align: center; }
+
+    /* Recent Activity Widget */
+    .tx-list { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; list-style: none; }
+    .tx-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; }
+    .tx-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .tx-info { display: flex; flex-direction: column; gap: 4px; }
+    .tx-desc { font-size: 14px; font-weight: 600; color: #0f172a; }
+    .tx-date { font-size: 11px; color: #64748b; }
+    .tx-amount { font-size: 14px; font-weight: 700; }
+    .tx-amount.credit { color: #166534; }
+    .tx-amount.debit { color: #991b1b; }
+    
+    /* Institutional Modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 54, 91, 0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+    .modal-content { background: white; width: 100%; max-width: 480px; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+    .modal-header { background: #00365b; color: white; padding: 20px 24px; font-weight: 600; font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .modal-body { padding: 32px 24px; }
+    .input-group { margin-bottom: 20px; }
+    .input-label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .input-field { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; background: #f8fafc; transition: all 0.2s; outline: none; }
+    .input-field:focus { background: white; border-color: #005a9c; box-shadow: 0 0 0 3px rgba(0,90,156,0.1); }
+    
+    /* Alert Toast */
+    .toast { position: fixed; bottom: 30px; right: 30px; background: #00365b; color: white; padding: 16px 24px; border-radius: 8px; font-weight: 500; font-size: 14px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); z-index: 9999; border-left: 4px solid #689221; animation: slideUp 0.3s ease; }
+    @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Responsive Design */
+    @media (max-width: 1024px) {
+      .widget-grid { grid-template-columns: 1fr 1fr; }
+      .widget:nth-child(3) { grid-column: 1 / -1; }
+    }
+    @media (max-width: 768px) {
+      .sidebar { position: fixed; transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .close-menu-btn { display: block; }
+      .top-header { justify-content: space-between; padding: 16px 24px; }
+      .mobile-menu-btn { display: block; }
+      .dashboard-content { padding: 0 16px 24px 16px; }
+      .accounts-grid { grid-template-columns: 1fr; }
+      .widget-grid { grid-template-columns: 1fr; }
     }
   `;
 
-  if (!isMounted) return <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: 'white', fontSize: '20px', letterSpacing: '2px' }}>INITIALIZING VAULT...</div></div>;
+  if (!isMounted) return <div style={{ height: '100vh', backgroundColor: '#f4f5f7' }}></div>;
 
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: styles }} />
-      <div className="dash-wrapper">
-        
-        <header className="dash-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '40px', height: '40px', backgroundColor: '#dc2626', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
-              <svg style={{ width: '24px', height: '24px', color: 'white' }} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
-              </svg>
-            </div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', letterSpacing: '0.5px' }}>Apex Global Vault</h1>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>SECURE CLIENT ENVIRONMENT</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', fontSize: '14px', fontWeight: '600' }}>
-            <span style={{ color: '#cbd5e1' }}>Welcome back, <span style={{ color: 'white' }}>{username}</span></span>
-            <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s' }}>Log Out</button>
-          </div>
-        </header>
+      
+      {systemAlert && <div className="toast">ℹ️ {systemAlert}</div>}
 
-        <main className="dash-main">
-          
-          {/* LEFT COLUMN: Balances & History */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            
-            <div className="card">
-              <div className="card-header"><h2 className="card-title">Portfolio Overview</h2></div>
-              <div style={{ padding: '0 24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <div>
-                    <div style={{ color: '#2563eb', fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>Liquid Capital (Main)</div>
-                    <div style={{ color: '#64748b', fontSize: '13px', fontFamily: 'monospace' }}>{mainAccountNo}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a' }}>${mainBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                    <div style={{ color: '#10b981', fontSize: '12px', marginTop: '4px', fontWeight: '600' }}>Available to trade</div>
-                  </div>
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 0' }}>
-                  <div>
-                    <div style={{ color: '#2563eb', fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>Secure Asset Vault</div>
-                    <div style={{ color: '#64748b', fontSize: '13px', fontFamily: 'monospace' }}>{vaultAccountNo}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a' }}>${vaultBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                    <div style={{ color: '#f59e0b', fontSize: '12px', marginTop: '4px', fontWeight: '600' }}>Interest Accruing</div>
-                  </div>
-                </div>
-              </div>
-              <div style={{ backgroundColor: '#0f172a', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white' }}>
-                <strong style={{ fontSize: '14px', letterSpacing: '1px', textTransform: 'uppercase' }}>Total Net Worth</strong>
-                <strong style={{ fontSize: '20px' }}>${netWorth.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
-              </div>
+      {/* MOBILE BACKDROP - Closes menu when clicked outside */}
+      <div className={`mobile-backdrop ${mobileMenuOpen ? 'open' : ''}`} onClick={() => setMobileMenuOpen(false)}></div>
+
+      {/* TRANSFER MODAL */}
+      {activeModal === 'transfer' && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span>Initiate Secure Transfer</span>
+              <button onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '20px' }}>×</button>
             </div>
-
-            <div className="card">
-              <div className="card-header">
-                <h2 className="card-title">Recent Activity</h2>
-                <button onClick={generatePDFStatement} style={{ backgroundColor: '#2563eb', color: 'white', padding: '8px 16px', fontSize: '13px', fontWeight: '600', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 4px rgba(37,99,235,0.2)' }}>
-                  📄 Download PDF
-                </button>
-              </div>
-              <div className="table-container">
-                <table className="responsive-table">
-                  <thead style={{ textAlign: 'left' }}>
-                    <tr>
-                      <th>Date</th>
-                      <th>Details</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transactions.length === 0 && (<tr><td colSpan="4" style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>No recent activity to display.</td></tr>)}
-                    {transactions.map((t) => (
-                      <tr key={t.id}>
-                        <td style={{ color: '#64748b', fontSize: '13px' }}>{t.date}</td>
-                        <td>
-                          <div style={{ color: '#0f172a', fontWeight: '600', marginBottom: '4px' }}>{t.desc}</div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>Account: {t.account || 'Main'}</div>
-                        </td>
-                        <td>
-                          <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', backgroundColor: t.status === 'approved' ? '#dcfce7' : t.status === 'rejected' ? '#fee2e2' : '#fef9c3', color: t.status === 'approved' ? '#166534' : t.status === 'rejected' ? '#991b1b' : '#854d0e' }}>
-                            {t.status}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: t.type === 'Credit' ? '#16a34a' : '#0f172a', fontSize: '15px' }}>
-                          {t.type === 'Credit' ? '+' : '-'}${Number(t.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN: Cards & Transfers */}
-          <div>
-            
-            {/* The New Premium Card Graphic */}
-            <div className="credit-card">
-              <div className="cc-chip"></div>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>Apex Black Obsidian</div>
-              <div className="cc-number">4532  1194  8842  0021</div>
-              <div className="cc-bottom">
-                <div>
-                  <div style={{ fontSize: '10px', color: '#64748b' }}>CARDHOLDER</div>
-                  <div style={{ color: 'white', marginTop: '2px' }}>{username}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '10px', color: '#64748b' }}>EXPIRES</div>
-                  <div style={{ color: 'white', marginTop: '2px' }}>12/28</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions Panel */}
-            <div className="quick-actions">
-              <button className="action-btn">
-                <span style={{ fontSize: '20px' }}>↗️</span> Send Money
-              </button>
-              <button className="action-btn">
-                <span style={{ fontSize: '20px' }}>↙️</span> Deposit
-              </button>
-              <button className="action-btn">
-                <span style={{ fontSize: '20px' }}>💳</span> Manage Cards
-              </button>
-              <button className="action-btn">
-                <span style={{ fontSize: '20px' }}>⚙️</span> Settings
-              </button>
-            </div>
-
-            {/* Upgraded Transfer Form */}
-            <div className="card" style={{ padding: '24px' }}>
-              <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#0f172a', fontWeight: '700' }}>Initiate Wire Transfer</h2>
-              
-              {successMsg && <div style={{ padding: '12px 16px', marginBottom: '20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', backgroundColor: successMsg.includes('❌') ? '#fee2e2' : '#dcfce7', color: successMsg.includes('❌') ? '#991b1b' : '#166534', border: `1px solid ${successMsg.includes('❌') ? '#fca5a5' : '#86efac'}` }}>{successMsg}</div>}
-
+            <div className="modal-body">
+              {successMsg && <div style={{ padding: '12px', marginBottom: '20px', borderRadius: '6px', backgroundColor: successMsg.includes('❌') ? '#fee2e2' : '#ecfccb', border: `1px solid ${successMsg.includes('❌') ? '#fca5a5' : '#bef264'}`, color: successMsg.includes('❌') ? '#991b1b' : '#3f6212', fontSize: '13px', fontWeight: '600' }}>{successMsg}</div>}
               <form onSubmit={handleTransferSubmit}>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#475569', marginBottom: '6px', fontWeight: '600' }}>Source Account</label>
-                  <select value={fromAccount} onChange={(e) => setFromAccount(e.target.value)} className="input-field">
-                    <option value="Main">Liquid Capital (Main) - ${mainBalance.toLocaleString()}</option>
-                    <option value="Vault">Secure Vault - ${vaultBalance.toLocaleString()}</option>
+                <div className="input-group">
+                  <label className="input-label">Transfer From Account</label>
+                  <select className="input-field" value={fromAccount} onChange={(e) => setFromAccount(e.target.value)}>
+                    <option value="Main">Checking (Main) - ${mainBalance.toLocaleString()}</option>
+                    <option value="Vault">Savings (Vault) - ${vaultBalance.toLocaleString()}</option>
                   </select>
                 </div>
-                
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#475569', marginBottom: '6px', fontWeight: '600' }}>Destination Routing / Account</label>
-                  <input type="text" required placeholder="Enter 9-digit routing" value={recipientAccount} onChange={(e) => setRecipientAccount(e.target.value)} className="input-field" />
+                <div className="input-group">
+                  <label className="input-label">Destination Routing / Account #</label>
+                  <input type="text" required className="input-field" value={recipientAccount} onChange={(e) => setRecipientAccount(e.target.value)} placeholder="000000000" />
                 </div>
-                
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#475569', marginBottom: '6px', fontWeight: '600' }}>Transfer Amount</label>
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '15px', fontWeight: '600' }}>$</span>
-                    <input type="number" required placeholder="0.00" min="1" step="0.01" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} className="input-field" style={{ paddingLeft: '32px', fontSize: '16px', fontWeight: '600' }} />
-                  </div>
+                <div className="input-group">
+                  <label className="input-label">Amount ($)</label>
+                  <input type="number" required min="1" step="0.01" className="input-field" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} placeholder="0.00" />
                 </div>
-                
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#475569', marginBottom: '6px', fontWeight: '600' }}>Memo (Optional)</label>
-                  <input type="text" placeholder="Reference note" value={transferDesc} onChange={(e) => setTransferDesc(e.target.value)} className="input-field" />
+                <div className="input-group">
+                  <label className="input-label">Memo (Optional)</label>
+                  <input type="text" className="input-field" value={transferDesc} onChange={(e) => setTransferDesc(e.target.value)} placeholder="e.g. Invoice #1234" />
                 </div>
-                
-                <button type="submit" disabled={isTransferring} style={{ width: '100%', backgroundColor: isTransferring ? '#94a3b8' : '#0f172a', color: 'white', padding: '14px', fontSize: '15px', fontWeight: '700', border: 'none', cursor: isTransferring ? 'not-allowed' : 'pointer', borderRadius: '8px', transition: 'background-color 0.2s', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                  {isTransferring ? 'Processing...' : 'Authorize Transfer'}
-                </button>
+                <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                  <button type="button" onClick={() => setActiveModal(null)} style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569', border: 'none', padding: '12px', fontWeight: '600', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+                  <button type="submit" disabled={isTransferring} style={{ flex: 2, backgroundColor: isTransferring ? '#94a3b8' : '#00365b', color: 'white', border: 'none', padding: '12px', fontWeight: '600', borderRadius: '6px', cursor: isTransferring ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                    {isTransferring ? 'Processing...' : 'Authorize Transfer'}
+                  </button>
+                </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      <div className="app-wrapper">
+        
+        {/* LEFT NAVIGATION SIDEBAR */}
+        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
+          <div className="sidebar-header">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h1 className="brand-title">
+                <div style={{ width: '24px', height: '24px', backgroundColor: '#689221', borderRadius: '4px' }}></div>
+                APEX VAULT
+              </h1>
+              {/* THE FIX: Mobile Close Button */}
+              <button className="close-menu-btn" onClick={() => setMobileMenuOpen(false)}>×</button>
+            </div>
+            <span className="fdic-text"><strong>FDIC</strong> Insured • Backed by the full faith and credit of the U.S. Government.</span>
+          </div>
+          
+          <ul className="nav-list">
+            <li className="nav-item active" onClick={() => setMobileMenuOpen(false)}>
+              <span className="nav-icon">⌂</span> Accounts Home
+            </li>
+            <li className="nav-item" onClick={() => { setActiveModal('transfer'); setMobileMenuOpen(false); }}>
+              <span className="nav-icon">⇄</span> Transfers & Payments
+            </li>
+            <li className="nav-item" onClick={() => { triggerMockFeature('Debit Card Controls'); setMobileMenuOpen(false); }}>
+              <span className="nav-icon">💳</span> Debit Card Controls
+            </li>
+            <li className="nav-item" onClick={() => { triggerMockFeature('My Credit View'); setMobileMenuOpen(false); }}>
+              <span className="nav-icon">📊</span> My Credit View
+            </li>
+            <li className="nav-item" onClick={() => { triggerMockFeature('Services'); setMobileMenuOpen(false); }}>
+              <span className="nav-icon">⚙️</span> Services
+            </li>
+            <li className="nav-item" onClick={() => { generatePDFStatement(); setMobileMenuOpen(false); }}>
+              <span className="nav-icon">📄</span> Statements & Docs
+            </li>
+            <li className="nav-item" onClick={() => { triggerMockFeature('Secure Messages'); setMobileMenuOpen(false); }}>
+              <span className="nav-icon">✉️</span> Secure Messages
+            </li>
+          </ul>
+
+          <div className="sidebar-footer">
+            <button className="logout-btn" onClick={handleLogout}>
+              <span>🚪</span> Log Off System
+            </button>
+          </div>
+        </aside>
+
+        {/* MAIN CONTENT PORTION */}
+        <main className="main-area">
+          
+          <header className="top-header">
+            <button className="mobile-menu-btn" onClick={() => setMobileMenuOpen(true)}>☰</button>
+            <div className="greeting-box">
+              <h2 className="greeting-text">Good Morning, {username}</h2>
+              <div className="last-login">Last login: {new Date().toLocaleDateString()} at 08:14 AM</div>
+            </div>
+          </header>
+
+          <div className="dashboard-content">
             
+            {/* THE NEW DUAL ACCOUNTS GRID */}
+            <div className="accounts-grid">
+              
+              {/* Checking Account Card */}
+              <div className="hero-card">
+                <div className="hero-header">
+                  <div className="hero-icon">C</div>
+                  <h3 className="hero-title">CHECKING (MAIN)</h3>
+                </div>
+                <div className="hero-balances">
+                  <div className="available-bal">
+                    <div className="available-bal-amount">${mainBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                    <div className="available-bal-label">Available Balance</div>
+                  </div>
+                </div>
+                <div className="hero-footer">
+                  <button className="quick-link" onClick={() => triggerMockFeature('Account Details')}>Details</button>
+                  <button className="quick-link" onClick={() => setActiveModal('transfer')}>Quick Transfer</button>
+                </div>
+                <div style={{ position: 'absolute', right: '30px', top: '30px', opacity: '0.03', fontSize: '100px', pointerEvents: 'none', color: '#00365b' }}>$</div>
+              </div>
+
+              {/* Savings Account Card */}
+              <div className="hero-card savings">
+                <div className="hero-header">
+                  <div className="hero-icon">S</div>
+                  <h3 className="hero-title">SAVINGS (VAULT)</h3>
+                </div>
+                <div className="hero-balances">
+                  <div className="available-bal">
+                    <div className="available-bal-amount" style={{ color: '#689221' }}>${vaultBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                    <div className="available-bal-label">Available Balance</div>
+                  </div>
+                </div>
+                <div className="hero-footer">
+                  <button className="quick-link" onClick={() => triggerMockFeature('Vault Details')}>Details</button>
+                  <button className="quick-link" onClick={() => setActiveModal('transfer')}>Quick Transfer</button>
+                </div>
+                <div style={{ position: 'absolute', right: '30px', top: '30px', opacity: '0.03', fontSize: '100px', pointerEvents: 'none', color: '#689221' }}>$</div>
+              </div>
+
+            </div>
+
+            {/* WIDGET GRID */}
+            <div className="widget-grid">
+              
+              {/* Account Summary Widget */}
+              <div className="widget">
+                <h4 className="widget-title">Account Summary</h4>
+                <div className="summary-row">
+                  <span className="summary-label">Total Assets</span>
+                  <span className="summary-value">${totalAssets.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Liabilities</span>
+                  <span className="summary-value" style={{ color: '#64748b' }}>$0.00</span>
+                </div>
+                <div className="summary-row" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px' }}>
+                  <span className="summary-label">Net Worth</span>
+                  <span className="summary-value" style={{ color: '#689221' }}>${totalAssets.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                </div>
+                <div className="view-all-link" onClick={() => triggerMockFeature('Full Summary')}>View Accounts ›</div>
+              </div>
+
+              {/* Move Money Widget */}
+              <div className="widget">
+                <h4 className="widget-title">Move Money</h4>
+                <div className="move-money-grid">
+                  <div className="action-btn" onClick={() => setActiveModal('transfer')}>
+                    <div className="action-icon">⇄</div>
+                    <div className="action-text">Internal<br/>Transfer</div>
+                  </div>
+                  <div className="action-btn" onClick={() => triggerMockFeature('External Transfer')}>
+                    <div className="action-icon">🏦</div>
+                    <div className="action-text">External<br/>Transfer</div>
+                  </div>
+                  <div className="action-btn" onClick={() => triggerMockFeature('Zelle')}>
+                    <div className="action-icon">💸</div>
+                    <div className="action-text">Send Money<br/>with Zelle®</div>
+                  </div>
+                  <div className="action-btn" onClick={() => triggerMockFeature('Bill Pay')}>
+                    <div className="action-icon">📅</div>
+                    <div className="action-text">Pay<br/>Bills</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Activity Widget */}
+              <div className="widget">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                  <h4 className="widget-title" style={{ border: 'none', margin: 0, padding: 0 }}>Recent Activity</h4>
+                  <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '4px 8px', borderRadius: '12px', fontWeight: '600' }}>All Accounts</span>
+                </div>
+                
+                <ul className="tx-list">
+                  {transactions.slice(0, 4).length === 0 && <li style={{ fontSize: '13px', color: '#64748b', textAlign: 'center', padding: '20px 0' }}>No recent activity.</li>}
+                  {transactions.slice(0, 4).map((t) => (
+                    <li className="tx-item" key={t.id}>
+                      <div className="tx-info">
+                        <span className="tx-desc">{t.desc}</span>
+                        <span className="tx-date">{t.date} • {t.account || 'Main'} • {t.status}</span>
+                      </div>
+                      <div className={`tx-amount ${t.type === 'Credit' ? 'credit' : 'debit'}`}>
+                        {t.type === 'Credit' ? '+' : '-'}${Number(t.amount).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="view-all-link" style={{ marginTop: '20px' }} onClick={() => generatePDFStatement()}>Download Statement ›</div>
+              </div>
+
+            </div>
           </div>
         </main>
       </div>
