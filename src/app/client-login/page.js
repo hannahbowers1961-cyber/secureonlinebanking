@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function ClientLogin() {
+  // 'password' | 'otp_request' | 'otp_verify' | 'enroll'
   const [loginMode, setLoginMode] = useState('password'); 
   
   // Login State
@@ -18,15 +19,15 @@ export default function ClientLogin() {
   const [resolvedEmail, setResolvedEmail] = useState('');
   const [resolvedName, setResolvedName] = useState('Member');
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const router = useRouter();
+
   // Enrollment State
   const [enrollAccount, setEnrollAccount] = useState('');
   const [enrollSSN, setEnrollSSN] = useState('');
   const [showEnrollAccount, setShowEnrollAccount] = useState(false);
   const [showEnrollSSN, setShowEnrollSSN] = useState(false);
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const router = useRouter();
 
   // Load remembered username on startup
   useEffect(() => {
@@ -43,7 +44,6 @@ export default function ClientLogin() {
     let fullName = 'Member';
     const isEmail = email.includes('@');
 
-    // IMPORTANT: Make sure this matches your table name EXACTLY (Profiles or profiles)
     let query = supabase.from('profiles').select('email, full_name');
     if (isEmail) query = query.eq('email', email);
     else query = query.eq('username', email);
@@ -51,7 +51,6 @@ export default function ClientLogin() {
     const { data: profile, error } = await query.single();
     
     if (error && !isEmail) {
-      console.error("SUPABASE ERROR:", error);
       return { error: `Username not found. Please verify your details.` };
     }
 
@@ -63,7 +62,7 @@ export default function ClientLogin() {
     return { email, fullName };
   };
 
-  // FLOW 1: MANAGER BYPASS (Instant Password Login)
+  // FLOW 1: SMART PASSWORD LOGIN (Checks for First-Time / New Device)
   const handlePasswordLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true); setError('');
@@ -76,9 +75,9 @@ export default function ClientLogin() {
     const { email, fullName, error: lookupErr } = await lookupUserCredentials(usernameInput);
     if (lookupErr) { setError(lookupErr); setIsLoading(false); return; }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
+    if (authErr) {
       setError('Invalid credentials. Please try again.');
       setIsLoading(false); return;
     }
@@ -86,21 +85,43 @@ export default function ClientLogin() {
     if (rememberMe) localStorage.setItem('remembered_username', usernameInput);
     else localStorage.removeItem('remembered_username');
 
-    if (data.session) {
+    // SECURITY CHECK: Is this their first time logging in on this device?
+    const isTrustedDevice = localStorage.getItem(`device_trusted_${email}`);
+
+    if (isTrustedDevice === 'true') {
+      // DEVICE RECOGNIZED: Let them straight in!
       sessionStorage.setItem('client_authenticated', 'true');
-      sessionStorage.setItem('current_user', email); 
-      sessionStorage.setItem('display_name', fullName); 
+      sessionStorage.setItem('current_user', email);
+      sessionStorage.setItem('display_name', fullName);
       window.location.href = '/client';
+    } else {
+      // FIRST TIME LOGIN: Force the secure email code
+      await supabase.auth.signOut(); // Instantly lock the vault back up
+      setResolvedEmail(email);
+      setResolvedName(fullName);
+
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email,
+        options: { shouldCreateUser: false }
+      });
+
+      if (otpError) {
+        setError('Error dispatching secure code. Please contact support.');
+        setIsLoading(false); return;
+      }
+
+      setLoginMode('otp_verify'); 
+      setIsLoading(false);
     }
   };
 
-  // FLOW 2: CLIENT OTP REQUEST (Send Secure Code)
+  // FLOW 2: FORGOT PASSWORD -> REQUEST OTP
   const handleOtpRequest = async (e) => {
     e.preventDefault();
     setIsLoading(true); setError('');
 
     if (!usernameInput) {
-      setError('Please enter your registered Email or Username.');
+      setError('Please enter your Username or Email first.');
       setIsLoading(false); return;
     }
 
@@ -110,25 +131,24 @@ export default function ClientLogin() {
     setResolvedEmail(email);
     setResolvedName(fullName);
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error: otpError } = await supabase.auth.signInWithOtp({
       email: email,
       options: { shouldCreateUser: false }
     });
 
-    if (error) {
-      setError('Unrecognized account. You must be pre-registered to receive a code.');
+    if (otpError) {
+      setError('Error dispatching secure code. Please contact support.');
     } else {
       setLoginMode('otp_verify'); 
     }
     setIsLoading(false);
   };
 
-  // FLOW 3: CLIENT OTP VERIFY (Submit the Secure Code)
+  // FLOW 3: VERIFY OTP AND TRUST DEVICE
   const handleOtpVerify = async (e) => {
     e.preventDefault();
     setIsLoading(true); setError('');
 
-    // ALLOWS 6 TO 8 DIGITS NOW
     if (!otpToken || otpToken.length < 6) {
       setError('Please enter the full secure code sent to your email.');
       setIsLoading(false); return;
@@ -147,6 +167,9 @@ export default function ClientLogin() {
 
     if (rememberMe) localStorage.setItem('remembered_username', usernameInput);
     else localStorage.removeItem('remembered_username');
+
+    // MARK THIS DEVICE AS TRUSTED FOR NEXT TIME!
+    localStorage.setItem(`device_trusted_${resolvedEmail}`, 'true');
 
     if (data.session) {
       sessionStorage.setItem('client_authenticated', 'true');
@@ -222,17 +245,14 @@ export default function ClientLogin() {
     .btn-outline { width: 100%; background-color: transparent; color: #2563eb; border: 1px solid #2563eb; padding: 14px; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background-color 0.2s; display: flex; justify-content: center; align-items: center; gap: 10px; }
     .btn-outline:hover { background-color: #eff6ff; }
     
-    .forgot-link { display: inline-block; margin-top: 32px; color: #2563eb; font-size: 16px; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 4px; }
-    .forgot-link:hover { text-decoration: underline; }
+    .forgot-btn { background: none; border: none; padding: 0; color: #2563eb; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; margin-top: 32px; }
+    .forgot-btn:hover { text-decoration: underline; }
 
     .passkey-card { background-color: #f8fafc; border-radius: 12px; padding: 40px; }
     .passkey-title { font-size: 22px; font-weight: 700; color: #1f2937; margin: 24px 0 16px 0; letter-spacing: -0.5px; }
     .passkey-desc { font-size: 16px; color: #4b5563; line-height: 1.6; margin-bottom: 24px; }
     .learn-more { color: #2563eb; font-weight: 600; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
     .learn-more:hover { text-decoration: underline; }
-
-    .spinner { width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid white; border-radius: 50%; animation: spin 1s linear infinite; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
     /* Enrollment Specific Styles */
     .enroll-header { font-size: 32px; font-weight: 700; color: #1f2937; margin: 0 0 16px 0; letter-spacing: -0.5px; }
@@ -275,7 +295,7 @@ export default function ClientLogin() {
               <h1>Account login</h1>
               {error && <div className="error-msg">{error}</div>}
 
-              {/* MODE 1: MANAGER PASSWORD LOGIN */}
+              {/* STEP 1: PASSWORD LOGIN */}
               {loginMode === 'password' && (
                 <form onSubmit={handlePasswordLogin}>
                   <div className="input-group">
@@ -297,33 +317,24 @@ export default function ClientLogin() {
                   </div>
                   
                   <button type="submit" className="btn-solid" disabled={isLoading}>
-                    {isLoading ? <><div className="spinner"></div> Authenticating...</> : 'Log in with password'}
+                    {isLoading ? <><div className="spinner"></div> Authenticating...</> : 'Log in'}
                   </button>
-                  <div className="divider">OR</div>
-                  <button type="button" className="btn-outline" onClick={() => setLoginMode('otp_request')} disabled={isLoading}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6zm-2 0l-8 5-8-5h16zm0 12H4V8l8 5 8-5v10z"/>
-                    </svg>
-                    Use Secure Email Code
+                  
+                  <button type="button" className="forgot-btn" onClick={() => setLoginMode('otp_request')} disabled={isLoading}>
+                    Forgot password? Log in with a secure code <span>›</span>
                   </button>
-                  <a href="#" className="forgot-link">Forgot username or password <span>›</span></a>
                 </form>
               )}
 
-              {/* MODE 2: CLIENT OTP REQUEST */}
+              {/* FORGOT PASSWORD -> OTP REQUEST */}
               {loginMode === 'otp_request' && (
                 <form onSubmit={handleOtpRequest}>
                   <div style={{ marginBottom: '24px', fontSize: '15px', color: '#4b5563', lineHeight: 1.5 }}>
-                    Enter your registered Email or Username. We will send a secure, single-use code to your inbox to verify your identity.
+                    <strong>Forgot your password?</strong> Enter your Username or Email below. We will send a secure, single-use code to your inbox to log you in securely.
                   </div>
                   <div className="input-group">
                     <label className="floating-label">Username or Email</label>
                     <input type="text" className="clean-input" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} disabled={isLoading} />
-                  </div>
-
-                  <div className="checkbox-row">
-                    <input type="checkbox" id="remember" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-                    <label htmlFor="remember">Remember my username</label>
                   </div>
 
                   <button type="submit" className="btn-solid" disabled={isLoading}>
@@ -331,20 +342,20 @@ export default function ClientLogin() {
                   </button>
                   <div className="divider">OR</div>
                   <button type="button" className="btn-outline" onClick={() => setLoginMode('password')} disabled={isLoading}>
-                    Use Password Login
+                    Return to Password Login
                   </button>
                 </form>
               )}
 
-              {/* MODE 3: CLIENT OTP VERIFICATION */}
+              {/* OTP VERIFICATION */}
               {loginMode === 'otp_verify' && (
                 <form onSubmit={handleOtpVerify}>
-                  <div className="success-msg">✓ Secure code dispatched to the registered email for {usernameInput}</div>
+                  <div className="success-msg">✓ For your security, we require email verification when logging in from a new device. A secure code has been sent to the registered email for {usernameInput}.</div>
                   <div className="input-group">
                     <label className="floating-label">Enter Secure Code</label>
                     <input 
                       type="text" 
-                      maxLength={8} /* UPGRADED TO ALLOW 8 DIGITS */
+                      maxLength={8} 
                       className="clean-input" 
                       value={otpToken} 
                       onChange={(e) => setOtpToken(e.target.value.replace(/[^0-9]/g, ''))} 
@@ -354,22 +365,23 @@ export default function ClientLogin() {
                     />
                   </div>
                   <button type="submit" className="btn-solid" disabled={isLoading}>
-                    {isLoading ? <><div className="spinner"></div> Verifying Identity...</> : 'Verify & Log In'}
+                    {isLoading ? <><div className="spinner"></div> Authenticating...</> : 'Verify & Log In'}
                   </button>
-                  <div className="divider">OR</div>
-                  <button type="button" className="btn-outline" onClick={() => setLoginMode('otp_request')} disabled={isLoading}>
-                    Request a New Code
+                  <button type="button" className="forgot-btn" onClick={() => setLoginMode('password')} disabled={isLoading} style={{ justifyContent: 'center', width: '100%' }}>
+                    Cancel & Return to Password Login
                   </button>
                 </form>
               )}
 
               {/* ENROLLMENT CALL-TO-ACTION */}
-              <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '1px solid #e5e7eb', textAlign: 'center' }}>
-                <p style={{ fontSize: '16px', color: '#4b5563', margin: '0 0 16px 0', fontWeight: '500' }}>New to Global Vault?</p>
-                <button type="button" className="btn-outline" onClick={() => setLoginMode('enroll')} disabled={isLoading}>
-                  Enroll in online banking
-                </button>
-              </div>
+              {(loginMode === 'password' || loginMode === 'otp_request') && (
+                <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '1px solid #e5e7eb', textAlign: 'center' }}>
+                  <p style={{ fontSize: '16px', color: '#4b5563', margin: '0 0 16px 0', fontWeight: '500' }}>New to Global Vault?</p>
+                  <button type="button" className="btn-outline" onClick={() => setLoginMode('enroll')} disabled={isLoading}>
+                    Enroll in online banking
+                  </button>
+                </div>
+              )}
 
             </div>
 
@@ -380,8 +392,8 @@ export default function ClientLogin() {
                   <path d="M32 8L12 16V30C12 43.08 20.52 55.22 32 60C43.48 55.22 52 43.08 52 30V16L32 8Z" fill="#eff6ff" stroke="#2563eb" strokeWidth="4" strokeLinejoin="round"/>
                   <path d="M24 32L29 37L40 25" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                <h2 className="passkey-title">Enhanced Security Active</h2>
-                <p className="passkey-desc">To protect your assets, Global Vault utilizes military-grade email verification. When you request a code, a secure, single-use token will be dispatched directly to your registered inbox.</p>
+                <h2 className="passkey-title">Trusted Device Security</h2>
+                <p className="passkey-desc">Global Vault utilizes advanced device recognition. When logging in for the first time on a new computer or phone, we require a secure email verification code to confirm your identity and register the device as safe.</p>
                 <a href="#" className="learn-more">Learn about our security <span>›</span></a>
               </div>
             </div>
@@ -435,7 +447,7 @@ export default function ClientLogin() {
               </button>
             </div>
 
-            <a href="#" className="forgot-link" style={{ fontSize: '14px', marginTop: '-16px', marginBottom: '40px' }}>
+            <a href="#" className="forgot-link" style={{ fontSize: '14px', margin: '0 0 40px 0', display: 'inline-block' }}>
               I don't have a Social Security number.
             </a>
 
