@@ -44,8 +44,9 @@ export default function ClientDashboard() {
     if (!isAuth) { window.location.href = '/client-login'; return; }
     
     const currentUser = sessionStorage.getItem('current_user') || 'Member';
-    setUsername(currentUser);
-
+    const displayName = sessionStorage.getItem('display_name') || currentUser.split('@')[0];
+    setUsername(displayName); // Use the real name for the visual UI
+    
     const now = new Date();
     setLastLoginTime(`${now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
 
