@@ -24,7 +24,7 @@ export default function ClientDashboard() {
 
   // Profile Update State
   const [profileEmail, setProfileEmail] = useState('');
-  const [profilePhone, setProfilePhone] = useState('+1 (919) ***-**42');
+  const [profilePhone, setProfilePhone] = useState('+1 (919) ***-**42'); // UPDATED AREA CODE
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [updateOtp, setUpdateOtp] = useState('');
   const [enteredOtp, setEnteredOtp] = useState('');
@@ -461,6 +461,8 @@ export default function ClientDashboard() {
     .b-nav-icon { font-size: 20px; }
 
     /* --- RESPONSIVE BREAKPOINTS --- */
+    .show-desktop { display: block; }
+    .show-mobile { display: none; }
     
     @media (max-width: 1024px) {
       .top-utility-bar { padding: 16px 24px; }
@@ -477,7 +479,8 @@ export default function ClientDashboard() {
     }
     
     @media (max-width: 850px) {
-      .desktop-header, .desktop-hero-container, .action-row { display: none; }
+      .show-desktop, .desktop-header, .desktop-hero-container, .action-row { display: none; }
+      .show-mobile { display: block; }
       .mobile-header, .bottom-nav { display: flex; }
       .mobile-header { flex-direction: column; }
       
@@ -615,7 +618,7 @@ export default function ClientDashboard() {
       )}
 
       {/* --- DESKTOP HEADER --- */}
-      <div className="desktop-header">
+      <div className="desktop-header show-desktop">
         <div className="top-utility-bar">
           <div className="brand-logo">Global <span>Vault</span></div>
           <div className="search-bar">
@@ -641,7 +644,7 @@ export default function ClientDashboard() {
       </div>
 
       {/* --- MOBILE HEADER --- */}
-      <div className="mobile-header">
+      <div className="mobile-header show-mobile">
         <div className="mobile-top-row">
           <div className="mobile-search" style={{ margin: 0 }}>
             <span>🔍</span>
@@ -660,7 +663,7 @@ export default function ClientDashboard() {
 
       {/* --- DESKTOP HERO --- */}
       {currentView === 'dashboard' && (
-        <div className="desktop-hero-container">
+        <div className="desktop-hero-container show-desktop">
           <div className="desktop-hero">
             <div className="hero-text">
               <h1>Good morning, {username.split(' ')[0] || 'User'}.</h1>
@@ -679,7 +682,7 @@ export default function ClientDashboard() {
       <div className="main-container">
         
         {currentView === 'dashboard' && (
-          <div className="action-row">
+          <div className="action-row show-desktop">
             <button className="btn-blue-solid" onClick={() => setActiveModal('transfer')}>Zelle® ›</button>
             <button className="btn-blue-solid" onClick={() => triggerMockFeature('Bill Pay')}>Pay bills ›</button>
             <button className="btn-blue-outline" onClick={() => generatePDFStatement()}>View statements</button>
@@ -921,6 +924,14 @@ export default function ClientDashboard() {
                   <span style={{ color: '#166534', fontWeight: '700', fontSize: '12px', background: '#dcfce7', padding: '4px 10px', borderRadius: '12px' }}>ENABLED</span>
                 </div>
               </div>
+              
+              {/* MOBILE ONLY LOGOUT BUTTON */}
+              <div className="show-mobile" style={{ marginTop: '32px' }}>
+                <button onClick={handleLogout} style={{ width: '100%', padding: '16px', background: 'transparent', border: '2px solid #e31837', color: '#e31837', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Log Out Securely
+                </button>
+              </div>
+
             </div>
           </div>
         )}
@@ -928,7 +939,7 @@ export default function ClientDashboard() {
       </div>
 
       {/* --- MOBILE BOTTOM NAV --- */}
-      <div className="bottom-nav">
+      <div className="bottom-nav show-mobile">
         <div className={`b-nav-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => changeView('dashboard')}>
           <span className="b-nav-icon">⌂</span>
           <span>Activity</span>
