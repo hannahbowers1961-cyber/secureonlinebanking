@@ -2,18 +2,54 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Added for security redirects
 import { supabase } from '../../lib/supabaseClient';
 
 export default function ManagerDashboard() {
+  // --- NEW SECURITY STATE ---
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const router = useRouter();
+
+  // --- YOUR EXISTING STATE ---
   const [isMounted, setIsMounted] = useState(false);
   const [transactions, setTransactions] = useState([]);
 
   useEffect(() => {
     setIsMounted(true);
-    fetchTransactions();
+    verifySecurityClearance(); // Start with security check instead of direct fetch
   }, []);
 
-  // CLOUD: Fetch live data from Supabase
+  // --- NEW SECURITY GATEKEEPER ---
+  const verifySecurityClearance = async () => {
+    // 1. Check if anyone is logged in
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      router.push('/client-login'); // Nobody logged in? Kick to login.
+      return;
+    }
+
+    // 2. Check if the logged-in user has the 'is_admin' badge
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('email', session.user.email)
+      .single();
+
+    if (profile && profile.is_admin === true) {
+      // 3. SECURE! Let them in and fetch the dashboard data.
+      setIsAuthorized(true);
+      fetchTransactions();
+    } else {
+      // Logged in, but normal client. Kick to client area.
+      router.push('/client'); 
+    }
+    
+    setIsCheckingAuth(false);
+  };
+
+  // --- YOUR EXISTING CLOUD FUNCTIONS ---
   const fetchTransactions = async () => {
     const { data, error } = await supabase
       .from('transactions')
@@ -24,7 +60,6 @@ export default function ManagerDashboard() {
     if (error) console.error("Error fetching:", error);
   };
 
-  // CLOUD: Update status in Supabase
   const updateStatus = async (id, newStatus) => {
     const { error } = await supabase
       .from('transactions')
@@ -36,7 +71,6 @@ export default function ManagerDashboard() {
     }
   };
 
-  // CLOUD: Wipe database
   const clearHistory = async () => {
     if(confirm("Are you sure you want to wipe the entire database? This cannot be undone.")) {
       const { error } = await supabase.from('transactions').delete().neq('id', 0);
@@ -44,6 +78,7 @@ export default function ManagerDashboard() {
     }
   };
 
+  // --- YOUR EXISTING STYLES ---
   const styles = `
     * { box-sizing: border-box; }
     html, body { overflow-x: hidden; margin: 0; padding: 0; width: 100%; }
@@ -63,7 +98,19 @@ export default function ManagerDashboard() {
     @media (max-width: 768px) { .manager-header { padding: 12px 16px; flex-direction: column; align-items: flex-start; } .manager-main { padding: 16px; } h1 { font-size: 20px !important; } }
   `;
 
-  if (!isMounted) return null;
+  // --- SECURITY LOADING SCREEN ---
+  if (!isMounted || isCheckingAuth) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'Arial, sans-serif', backgroundColor: '#e2e8f0' }}>
+        <h2 style={{ color: '#0f172a' }}>Verifying Security Clearance...</h2>
+      </div>
+    );
+  }
+
+  // Double-lock: If not authorized, render nothing.
+  if (!isAuthorized) return null;
+
+  // --- YOUR EXISTING DASHBOARD ---
   const pendingCount = transactions.filter(t => t.status === 'pending').length;
 
   return (
