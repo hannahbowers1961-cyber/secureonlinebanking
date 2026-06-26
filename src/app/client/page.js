@@ -24,7 +24,7 @@ export default function ClientDashboard() {
 
   // Profile Update State
   const [profileEmail, setProfileEmail] = useState('');
-  const [profilePhone, setProfilePhone] = useState('+1 (555) ***-**42');
+  const [profilePhone, setProfilePhone] = useState('+1 (919) ***-**42');
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [updateOtp, setUpdateOtp] = useState('');
   const [enteredOtp, setEnteredOtp] = useState('');
