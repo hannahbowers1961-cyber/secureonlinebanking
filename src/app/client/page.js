@@ -827,8 +827,8 @@ export default function ClientDashboard() {
                   <input type="text" className="input-field" value={username} disabled />
                 </div>
                 <div className="input-group">
-                  <label className="input-label">Gender</label>
-                  <input type="text" className="input-field" value="Not specified on file" disabled />
+                  <label className="input-label">Social Security Number</label>
+                  <input type="password" className="input-field" value="123456789" disabled />
                 </div>
                 <div className="input-group" style={{ gridColumn: '1 / -1' }}>
                   <label className="input-label">Physical Address</label>

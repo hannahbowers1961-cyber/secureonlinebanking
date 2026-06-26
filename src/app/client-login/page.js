@@ -82,6 +82,13 @@ export default function ClientLogin() {
       setIsLoading(false); return;
     }
 
+    // --- FIX: Fetch the exact name now that the user is securely authenticated ---
+    let finalFullName = fullName;
+    const { data: authProfile } = await supabase.from('profiles').select('full_name').eq('email', email).single();
+    if (authProfile && authProfile.full_name) {
+      finalFullName = authProfile.full_name;
+    }
+
     if (rememberMe) localStorage.setItem('remembered_username', usernameInput);
     else localStorage.removeItem('remembered_username');
 
@@ -92,13 +99,13 @@ export default function ClientLogin() {
       // DEVICE RECOGNIZED: Let them straight in!
       sessionStorage.setItem('client_authenticated', 'true');
       sessionStorage.setItem('current_user', email);
-      sessionStorage.setItem('display_name', fullName);
+      sessionStorage.setItem('display_name', finalFullName);
       window.location.href = '/client';
     } else {
       // FIRST TIME LOGIN: Force the secure email code
       await supabase.auth.signOut(); // Instantly lock the vault back up
       setResolvedEmail(email);
-      setResolvedName(fullName);
+      setResolvedName(finalFullName);
 
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: email,
@@ -165,6 +172,13 @@ export default function ClientLogin() {
       setIsLoading(false); return;
     }
 
+    // --- FIX: Fetch the exact name now that the OTP verified their identity ---
+    let finalFullName = resolvedName;
+    const { data: authProfile } = await supabase.from('profiles').select('full_name').eq('email', resolvedEmail).single();
+    if (authProfile && authProfile.full_name) {
+      finalFullName = authProfile.full_name;
+    }
+
     if (rememberMe) localStorage.setItem('remembered_username', usernameInput);
     else localStorage.removeItem('remembered_username');
 
@@ -174,7 +188,7 @@ export default function ClientLogin() {
     if (data.session) {
       sessionStorage.setItem('client_authenticated', 'true');
       sessionStorage.setItem('current_user', resolvedEmail);
-      sessionStorage.setItem('display_name', resolvedName);
+      sessionStorage.setItem('display_name', finalFullName);
       window.location.href = '/client';
     }
   };
