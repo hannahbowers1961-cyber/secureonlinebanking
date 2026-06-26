@@ -2,35 +2,31 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Added for security redirects
+import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function ManagerDashboard() {
-  // --- NEW SECURITY STATE ---
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const router = useRouter();
 
-  // --- YOUR EXISTING STATE ---
   const [isMounted, setIsMounted] = useState(false);
   const [transactions, setTransactions] = useState([]);
+  const [clients, setClients] = useState([]); // NEW: State for your clients
 
   useEffect(() => {
     setIsMounted(true);
-    verifySecurityClearance(); // Start with security check instead of direct fetch
+    verifySecurityClearance();
   }, []);
 
-  // --- NEW SECURITY GATEKEEPER ---
   const verifySecurityClearance = async () => {
-    // 1. Check if anyone is logged in
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      router.push('/client-login'); // Nobody logged in? Kick to login.
+      router.push('/client-login');
       return;
     }
 
-    // 2. Check if the logged-in user has the 'is_admin' badge
     const { data: profile } = await supabase
       .from('profiles')
       .select('is_admin')
@@ -38,28 +34,66 @@ export default function ManagerDashboard() {
       .single();
 
     if (profile && profile.is_admin === true) {
-      // 3. SECURE! Let them in and fetch the dashboard data.
       setIsAuthorized(true);
-      fetchTransactions();
+      fetchDashboardData(); // Fetch both transactions AND clients
     } else {
-      // Logged in, but normal client. Kick to client area.
       router.push('/client'); 
     }
     
     setIsCheckingAuth(false);
   };
 
-  // --- YOUR EXISTING CLOUD FUNCTIONS ---
-  const fetchTransactions = async () => {
-    const { data, error } = await supabase
+  const fetchDashboardData = async () => {
+    // Fetch Transactions
+    const { data: txData, error: txError } = await supabase
       .from('transactions')
       .select('*')
       .order('id', { ascending: false });
     
-    if (data) setTransactions(data);
-    if (error) console.error("Error fetching:", error);
+    if (txData) setTransactions(txData);
+    if (txError) console.error("Error fetching tx:", txError);
+
+    // Fetch Clients (Profiles) - Excluding other admins to keep the list clean
+    const { data: clientData, error: clientError } = await supabase
+      .from('profiles')
+      .select('*')
+      .is('is_admin', false) 
+      .order('full_name', { ascending: true });
+
+    if (clientData) setClients(clientData);
+    if (clientError) console.error("Error fetching clients:", clientError);
   };
 
+  // --- NEW: INJECT BALANCE FUNCTION ---
+  const handleInjectBalance = async (email, currentBalance, clientName) => {
+    // Prompt the manager to enter a new balance
+    const newBalanceInput = window.prompt(`Enter new account balance for ${clientName}:`, currentBalance || 0);
+    
+    // If they click cancel or enter nothing, stop
+    if (newBalanceInput === null || newBalanceInput.trim() === '') return;
+    
+    const parsedBalance = parseFloat(newBalanceInput);
+    
+    if (isNaN(parsedBalance)) {
+      alert("Invalid number. Please enter a valid amount.");
+      return;
+    }
+
+    // Push the new balance to the database
+    const { error } = await supabase
+      .from('profiles')
+      .update({ account_balance: parsedBalance })
+      .eq('email', email);
+
+    if (error) {
+      alert(`Error updating balance: ${error.message}`);
+    } else {
+      // Update the screen instantly
+      setClients(clients.map(c => c.email === email ? { ...c, account_balance: parsedBalance } : c));
+    }
+  };
+
+  // --- EXISTING TRANSACTION FUNCTIONS ---
   const updateStatus = async (id, newStatus) => {
     const { error } = await supabase
       .from('transactions')
@@ -78,13 +112,12 @@ export default function ManagerDashboard() {
     }
   };
 
-  // --- YOUR EXISTING STYLES ---
   const styles = `
     * { box-sizing: border-box; }
     html, body { overflow-x: hidden; margin: 0; padding: 0; width: 100%; }
     .manager-wrapper { min-height: 100vh; background-color: #e2e8f0; font-family: Arial, sans-serif; color: #333; overflow-x: hidden; width: 100%; }
     .manager-header { background-color: #0f172a; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #dc2626; flex-wrap: wrap; gap: 12px; width: 100%; }
-    .manager-main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 32px 16px; }
+    .manager-main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 32px; }
     .admin-card { background-color: white; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
     .admin-card-header { background-color: #f8fafc; padding: 16px 20px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
     .table-container { overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; padding: 0; }
@@ -94,11 +127,11 @@ export default function ManagerDashboard() {
     .btn-action { padding: 6px 12px; font-size: 12px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; transition: opacity 0.2s; margin-right: 8px; }
     .btn-approve { background-color: #16a34a; color: white; }
     .btn-reject { background-color: #dc2626; color: white; }
-    .btn-approve:hover, .btn-reject:hover { opacity: 0.8; }
+    .btn-inject { background-color: #2563eb; color: white; }
+    .btn-approve:hover, .btn-reject:hover, .btn-inject:hover { opacity: 0.8; }
     @media (max-width: 768px) { .manager-header { padding: 12px 16px; flex-direction: column; align-items: flex-start; } .manager-main { padding: 16px; } h1 { font-size: 20px !important; } }
   `;
 
-  // --- SECURITY LOADING SCREEN ---
   if (!isMounted || isCheckingAuth) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'Arial, sans-serif', backgroundColor: '#e2e8f0' }}>
@@ -107,10 +140,8 @@ export default function ManagerDashboard() {
     );
   }
 
-  // Double-lock: If not authorized, render nothing.
   if (!isAuthorized) return null;
 
-  // --- YOUR EXISTING DASHBOARD ---
   const pendingCount = transactions.filter(t => t.status === 'pending').length;
 
   return (
@@ -134,6 +165,49 @@ export default function ManagerDashboard() {
         </header>
 
         <main className="manager-main">
+          
+          {/* --- NEW SECTION: CLIENT ACCOUNTS CONTROLS --- */}
+          <div className="admin-card">
+            <div className="admin-card-header">
+              <h2 style={{ margin: 0, fontSize: '18px', color: '#0f172a', fontWeight: 'bold' }}>Client Account Controls</h2>
+            </div>
+            <div className="table-container">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th className="admin-th">Client Name</th>
+                    <th className="admin-th">Username</th>
+                    <th className="admin-th">Email</th>
+                    <th className="admin-th">Current Balance</th>
+                    <th className="admin-th">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clients.length === 0 && (<tr><td colSpan="5" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>No active clients found.</td></tr>)}
+                  {clients.map((client) => (
+                    <tr key={client.id}>
+                      <td className="admin-td" style={{ fontWeight: 'bold', color: '#0f172a' }}>{client.full_name || 'N/A'}</td>
+                      <td className="admin-td">{client.username}</td>
+                      <td className="admin-td">{client.email}</td>
+                      <td className="admin-td" style={{ fontWeight: 'bold', color: '#16a34a', fontSize: '16px' }}>
+                        ${Number(client.account_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="admin-td">
+                        <button 
+                          onClick={() => handleInjectBalance(client.email, client.account_balance, client.full_name)} 
+                          className="btn-action btn-inject"
+                        >
+                          INJECT BALANCE
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* --- EXISTING SECTION: MASTER TRANSACTION LEDGER --- */}
           <div className="admin-card">
             <div className="admin-card-header">
               <h2 style={{ margin: 0, fontSize: '18px', color: '#0f172a', fontWeight: 'bold' }}>Master Transaction Ledger</h2>
