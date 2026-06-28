@@ -474,7 +474,7 @@ export default function ClientDashboard() {
     .acc-icon-box { width: 48px; height: 32px; background: linear-gradient(135deg, #0c2074, #0045a5); border-radius: 4px; position: relative; overflow: hidden; border: 1px solid rgba(0,0,0,0.1); flex-shrink: 0; }
     .acc-icon-box::after { content: 'Visa'; position: absolute; bottom: 2px; right: 4px; color: white; font-size: 8px; font-weight: bold; font-style: italic; }
     .acc-icon-box.red { background: linear-gradient(135deg, #e31837, #b01028); }
-    .acc-icon-box.red::after { content: 'Vault'; }
+    .acc-icon-box.red::after { content: 'Visa'; }
     
     .acc-name { font-size: 16px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .acc-number { font-size: 16px; color: var(--text-muted); font-weight: 400; }
@@ -537,10 +537,42 @@ export default function ClientDashboard() {
     .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #1f2937; color: white; padding: 16px 24px; border-radius: 8px; font-weight: 500; font-size: 14px; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); white-space: nowrap; max-width: 90vw; }
 
     /* Mobile Bottom Nav Restructured */
-    .bottom-nav { display: none; position: fixed; bottom: 0; left: 0; width: 100%; background: #f8fafc; border-top: 1px solid var(--border-light); z-index: 100; justify-content: space-between; padding: 10px 16px 16px 16px; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05); }
-    .b-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #64748b; font-size: 10px; font-weight: 600; cursor: pointer; flex: 1; text-align: center; }
-    .b-nav-item.active { color: var(--hero-blue); }
-    .b-nav-icon { font-size: 20px; font-weight: normal; }
+    .bottom-nav { 
+      display: none; 
+      position: fixed; 
+      bottom: 0; 
+      left: 0; 
+      width: 100%; 
+      background: #ffffff; 
+      border-top: 1px solid var(--border-light); 
+      z-index: 100; 
+      justify-content: space-between; 
+      padding: 12px 24px 24px 24px; 
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.03); 
+    }
+    .b-nav-item { 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      gap: 6px; 
+      color: #6b7280; 
+      font-size: 11px; 
+      font-weight: 600; 
+      cursor: pointer; 
+      flex: 1; 
+      text-align: center; 
+      transition: color 0.2s;
+    }
+    .b-nav-item.active { 
+      color: #0c2074; 
+    }
+    .b-nav-icon { 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      width: 24px; 
+      height: 24px; 
+    }
 
     /* --- RESPONSIVE BREAKPOINTS --- */
     .show-desktop { display: block; }
@@ -847,7 +879,7 @@ export default function ClientDashboard() {
           </div>
           <div className="search-bar">
             <span style={{ color: '#0045a5' }}>🔍</span>
-            <input type="text" placeholder="G.V. Smart Assistant" />
+            <input type="text" placeholder="U.S Bank Smart Assistant" />
           </div>
           <div className="top-actions">
             <span onClick={() => setActiveModal('notifications')}>
@@ -876,13 +908,16 @@ export default function ClientDashboard() {
             <BrandLogo size={36} textColor="#ffffff" />
           </div>
           <button className="mobile-bell-btn" onClick={() => setActiveModal('notifications')}>
-            🔔
-            {isRestricted && <span className="mobile-bell-badge"></span>}
-          </button>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          {isRestricted && <span className="mobile-bell-badge"></span>}
+        </button>
         </div>
         <div className="mobile-search">
           <span>🔍</span>
-          <input type="text" placeholder="Smart Assistant" />
+          <input type="text" placeholder="U.S Bank Smart Assistant" />
           <span>🎤</span>
         </div>
         
@@ -935,7 +970,7 @@ export default function ClientDashboard() {
             <div>
               <div className="card-header-flex">
                 <h2 className="card-title">Accounts</h2>
-                <span className="card-meta" onClick={() => triggerMockFeature('Settings')}>⚙ Account settings</span>
+                <span className="card-meta" onClick={() => changeView('settings')}>⚙ Account settings</span>
               </div>
               
               <div className="us-card" style={{ padding: '0', border: 'none', background: 'transparent', boxShadow: 'none' }}>
@@ -964,7 +999,7 @@ export default function ClientDashboard() {
                     <div className="acc-left">
                       <div className="acc-icon-box red"></div>
                       <div>
-                        <div className="acc-name">Savings Vault <span className="acc-number">...1195</span></div>
+                        <div className="acc-name">Savings <span className="acc-number">...1195</span></div>
                         <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>U.S. Bank</div>
                       </div>
                     </div>
@@ -1197,24 +1232,50 @@ export default function ClientDashboard() {
 
       </div>
 
-      {/* --- RESTRUCTURED 4-ITEM MOBILE BOTTOM NAV --- */}
+      {/* --- RESTRUCTURED 3-ITEM MOBILE BOTTOM NAV --- */}
       <div className="bottom-nav show-mobile">
+        
+        {/* Accounts Tab */}
         <div className={`b-nav-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => changeView('dashboard')}>
-          <span className="b-nav-icon">⌂</span>
+          <span className="b-nav-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24">
+              <path d="M6 5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M4 9h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <rect x="2" y="13" width="20" height="9" rx="2" fill={currentView === 'dashboard' ? "currentColor" : "none"} stroke="currentColor" strokeWidth={currentView === 'dashboard' ? "0" : "1.5"} />
+              <circle cx="6" cy="16" r="1.25" fill={currentView === 'dashboard' ? "#ffffff" : "currentColor"} />
+              <line x1="9" y1="16" x2="18" y2="16" stroke={currentView === 'dashboard' ? "#ffffff" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" />
+              <circle cx="6" cy="19.5" r="1.25" fill={currentView === 'dashboard' ? "#ffffff" : "currentColor"} />
+              <line x1="9" y1="19.5" x2="16" y2="19.5" stroke={currentView === 'dashboard' ? "#ffffff" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </span>
           <span>Accounts</span>
         </div>
+
+        {/* Transfer & Pay Tab */}
         <div className="b-nav-item" onClick={() => handleSecureAction(() => setActiveModal('transfer'))}>
-          <span className="b-nav-icon">⇄</span>
-          <span>Transfer & Pay</span>
+          <span className="b-nav-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="15" cy="12" r="7" />
+              <path d="M15 8v8 M13 10.5c0-1 4-1 4 0s-4 1-4 2 4 1 4 0" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="4" y1="12" x2="6" y2="12" strokeLinecap="round" />
+              <line x1="1" y1="9" x2="4" y2="9" strokeLinecap="round" />
+              <line x1="2" y1="15" x2="5" y2="15" strokeLinecap="round" />
+            </svg>
+          </span>
+          <span>Transfer & pay</span>
         </div>
+
+        {/* Activity Tab */}
         <div className={`b-nav-item ${currentView === 'transactions' ? 'active' : ''}`} onClick={() => changeView('transactions')}>
-          <span className="b-nav-icon">☰</span>
+          <span className="b-nav-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="7" />
+              <path d="M12 8v4l2.5 2.5" />
+            </svg>
+          </span>
           <span>Activity</span>
         </div>
-        <div className={`b-nav-item ${currentView === 'settings' ? 'active' : ''}`} onClick={() => changeView('settings')}>
-          <span className="b-nav-icon">👤</span>
-          <span>Profile & Security</span>
-        </div>
+
       </div>
     </>
   );
