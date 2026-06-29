@@ -86,7 +86,7 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     const isAuth = sessionStorage.getItem('client_authenticated');
-    if (!isAuth) { window.location.href = '/client-login'; return; }
+    if (!isAuth) { window.location.replace('/client-login'); return; }
     
     const currentUser = sessionStorage.getItem('current_user') || 'Member';
     const displayName = sessionStorage.getItem('display_name') || currentUser.split('@')[0];
@@ -340,7 +340,7 @@ export default function ClientDashboard() {
   const handleLogout = () => {
     sessionStorage.removeItem('client_authenticated'); 
     sessionStorage.removeItem('current_user');
-    window.location.href = '/client-login';
+    window.location.replace('/client-login');
   };
 
   const triggerMockFeature = (feature) => {

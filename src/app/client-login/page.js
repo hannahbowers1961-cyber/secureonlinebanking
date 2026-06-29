@@ -53,6 +53,14 @@ export default function ClientLogin() {
     }
   }, []);
 
+  // ADD THIS NEW BLOCK: Bounce already-logged-in users
+  useEffect(() => {
+    const isAuth = sessionStorage.getItem('client_authenticated');
+    if (isAuth) {
+      window.location.replace('/client');
+    }
+  }, []);
+
   // HELPER: Translate Username to Email & Get Full Name
   const lookupUserCredentials = async (input) => {
     let email = input.trim();
@@ -115,7 +123,7 @@ export default function ClientLogin() {
       sessionStorage.setItem('client_authenticated', 'true');
       sessionStorage.setItem('current_user', email);
       sessionStorage.setItem('display_name', finalFullName);
-      window.location.href = '/client';
+      window.location.replace('/client');
     } else {
       // FIRST TIME LOGIN: Force the secure email code
       await supabase.auth.signOut(); // Instantly lock the vault back up
@@ -204,7 +212,7 @@ export default function ClientLogin() {
       sessionStorage.setItem('client_authenticated', 'true');
       sessionStorage.setItem('current_user', resolvedEmail);
       sessionStorage.setItem('display_name', finalFullName);
-      window.location.href = '/client';
+      window.location.replace('/client');
     }
   };
 

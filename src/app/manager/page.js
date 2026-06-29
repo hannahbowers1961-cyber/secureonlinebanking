@@ -23,7 +23,7 @@ export default function ManagerDashboard() {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      router.push('/client-login');
+      router.replace('/client-login');
       return;
     }
 
@@ -37,7 +37,7 @@ export default function ManagerDashboard() {
       setIsAuthorized(true);
       fetchDashboardData(); 
     } else {
-      router.push('/client'); 
+      router.replace('/client'); 
     }
     
     setIsCheckingAuth(false);
