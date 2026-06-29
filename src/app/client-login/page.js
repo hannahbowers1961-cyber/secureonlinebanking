@@ -232,16 +232,16 @@ export default function ClientLogin() {
     
     .logo-wrapper { display: flex; align-items: center; }
 
-    .login-container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
+    .login-container { max-width: 1000px; margin: 20px auto; padding: 0 20px; }
     .enroll-container { max-width: 750px; margin: 40px auto; padding: 0 20px; }
 
-    .fdic-banner { border: 1px solid #e5e7eb; border-radius: 6px; padding: 16px 20px; display: flex; align-items: center; gap: 12px; margin-bottom: 40px; font-size: 14px; color: #1f2937; }
+    .fdic-banner { border: 1px solid #e5e7eb; border-radius: 6px; padding: 16px 20px; display: flex; align-items: center; gap: 12px; margin-bottom: 20px; font-size: 14px; color: #1f2937; }
     .fdic-bold { font-weight: 800; font-size: 16px; color: #0c2074; letter-spacing: -0.5px; }
     .fdic-italic { font-style: italic; color: #4b5563; }
 
     .login-grid { display: grid; grid-template-columns: 5fr 4fr; gap: 80px; align-items: start; }
 
-    h1 { font-size: 24px; font-weight: 700; color: #1f2937; margin: 0 0 32px 0; }
+    h1 { font-size: 24px; font-weight: 700; color: #1f2937; margin: 0 0 20px 0; }
     
     .input-group { margin-bottom: 32px; position: relative; width: 100%; }
     .floating-label { display: block; font-size: 16px; color: #4b5563; margin-bottom: 4px; }
@@ -251,7 +251,7 @@ export default function ClientLogin() {
     .show-toggle { position: absolute; right: 0; bottom: 8px; background: none; border: none; color: #4b5563; font-size: 14px; font-weight: 500; cursor: pointer; padding: 0; }
     .show-toggle:hover { color: #1d4ed8; text-decoration: underline; }
 
-    .checkbox-row { display: flex; align-items: center; gap: 12px; margin-top: -16px; margin-bottom: 32px; }
+    .checkbox-row { display: flex; align-items: center; gap: 12px; margin-top: -16px; margin-bottom: 20px; }
     .checkbox-row input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; border: 1px solid #9ca3af; border-radius: 4px; }
     .checkbox-row label { font-size: 16px; color: #4b5563; cursor: pointer; }
 
@@ -289,7 +289,7 @@ export default function ClientLogin() {
     @media (max-width: 900px) {
       .login-grid { grid-template-columns: 1fr; gap: 48px; }
       /* Modified for mobile: Add specific padding and a slight top margin to nudge the logo down */
-      .login-top-nav { padding: 24px 20px 16px 20px; flex-direction: column; gap: 16px; align-items: flex-start; }
+      .login-top-nav { padding: 24px 10px 16px 10px; flex-direction: column; gap: 10px; align-items: flex-start; }
       .logo-wrapper { margin-top: 6px; }
     }
   `;
