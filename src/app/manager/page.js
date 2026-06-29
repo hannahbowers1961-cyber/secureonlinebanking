@@ -154,7 +154,7 @@ export default function ManagerDashboard() {
   const styles = `
     * { box-sizing: border-box; }
     html, body { overflow-x: hidden; margin: 0; padding: 0; width: 100%; }
-    .manager-wrapper { min-height: 100vh; background-color: #e2e8f0; font-family: Arial, sans-serif; color: #333; overflow-x: hidden; width: 100%; }
+    .manager-wrapper { min-height: 100vh; background-color: #e2e8f0; color: #333; overflow-x: hidden; width: 100%; }
     .manager-header { background-color: #0f172a; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #dc2626; flex-wrap: wrap; gap: 12px; width: 100%; }
     .manager-main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 32px; }
     .admin-card { background-color: white; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
@@ -196,7 +196,7 @@ export default function ManagerDashboard() {
 
   if (!isMounted || isCheckingAuth) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'Arial, sans-serif', backgroundColor: '#e2e8f0' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#e2e8f0' }}>
         <h2 style={{ color: '#0f172a' }}>Verifying Security Clearance...</h2>
       </div>
     );

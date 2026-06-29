@@ -392,7 +392,7 @@ export default function ClientDashboard() {
       --border-light: #e5e7eb;
     }
     
-    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    * { box-sizing: border-box; }
     html, body { background-color: var(--bg-gray); margin: 0; padding: 0; color: var(--text-main); -webkit-font-smoothing: antialiased; max-width: 100vw; overflow-x: hidden; }
     
     .loader-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.8); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
@@ -567,12 +567,12 @@ export default function ClientDashboard() {
       color: #0c2074; 
     }
     .b-nav-icon { 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      width: 24px; 
-      height: 24px; 
-    }
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    width: 32px; 
+    height: 32px; 
+}
 
     /* --- RESPONSIVE BREAKPOINTS --- */
     .show-desktop { display: block; }
@@ -924,7 +924,7 @@ export default function ClientDashboard() {
         {/* CONDITIONALLY RENDERED: ONLY SHOWS ON DASHBOARD TAB */}
         {currentView === 'dashboard' && (
           <>
-            <div className="mobile-greeting">{timeGreeting}, {username.split(' ')[0] || 'User'}</div>
+            <div className="mobile-greeting"><strong>Welcome back, {username.split(' ')[0] || 'User'}</strong></div>
             <div className="mobile-pills">
               <div className="pill" onClick={() => handleSecureAction(() => setActiveModal('transfer'))}>Send | Zelle®</div>
               <div className="pill" onClick={() => handleSecureAction(() => triggerMockFeature('Deposit Check'))}>Deposit check</div>
@@ -1238,14 +1238,14 @@ export default function ClientDashboard() {
         {/* Accounts Tab */}
         <div className={`b-nav-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => changeView('dashboard')}>
           <span className="b-nav-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24">
-              <path d="M6 5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M4 9h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <rect x="2" y="13" width="20" height="9" rx="2" fill={currentView === 'dashboard' ? "currentColor" : "none"} stroke="currentColor" strokeWidth={currentView === 'dashboard' ? "0" : "1.5"} />
+            <svg width="30" height="30" viewBox="0 0 24 24">
+              <path d="M6 5h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M4 9h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <rect x="2" y="13" width="20" height="9" rx="2" fill={currentView === 'dashboard' ? "currentColor" : "none"} stroke="currentColor" strokeWidth={currentView === 'dashboard' ? "0" : "2"} />
               <circle cx="6" cy="16" r="1.25" fill={currentView === 'dashboard' ? "#ffffff" : "currentColor"} />
-              <line x1="9" y1="16" x2="18" y2="16" stroke={currentView === 'dashboard' ? "#ffffff" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="9" y1="16" x2="18" y2="16" stroke={currentView === 'dashboard' ? "#ffffff" : "currentColor"} strokeWidth="2" strokeLinecap="round" />
               <circle cx="6" cy="19.5" r="1.25" fill={currentView === 'dashboard' ? "#ffffff" : "currentColor"} />
-              <line x1="9" y1="19.5" x2="16" y2="19.5" stroke={currentView === 'dashboard' ? "#ffffff" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="9" y1="19.5" x2="16" y2="19.5" stroke={currentView === 'dashboard' ? "#ffffff" : "currentColor"} strokeWidth="2" strokeLinecap="round" />
             </svg>
           </span>
           <span>Accounts</span>
@@ -1254,7 +1254,7 @@ export default function ClientDashboard() {
         {/* Transfer & Pay Tab */}
         <div className="b-nav-item" onClick={() => handleSecureAction(() => setActiveModal('transfer'))}>
           <span className="b-nav-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="15" cy="12" r="7" />
               <path d="M15 8v8 M13 10.5c0-1 4-1 4 0s-4 1-4 2 4 1 4 0" strokeLinecap="round" strokeLinejoin="round" />
               <line x1="4" y1="12" x2="6" y2="12" strokeLinecap="round" />
@@ -1268,7 +1268,7 @@ export default function ClientDashboard() {
         {/* Activity Tab */}
         <div className={`b-nav-item ${currentView === 'transactions' ? 'active' : ''}`} onClick={() => changeView('transactions')}>
           <span className="b-nav-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="7" />
               <path d="M12 8v4l2.5 2.5" />
             </svg>
