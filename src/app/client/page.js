@@ -463,7 +463,7 @@ export default function ClientDashboard() {
     .us-card { background: white; border-radius: 12px; border: 1px solid var(--border-light); padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); overflow: hidden; }
     .card-header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
     .card-title { font-size: 20px; font-weight: 700; color: var(--text-main); margin: 0; }
-    .card-meta { font-size: 13px; color: var(--hero-blue); display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+    .card-meta { font-size: 15px; color: var(--hero-blue); display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
     
     .list-header { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 16px; }
     .account-item { border: 1px solid var(--border-light); border-radius: 8px; padding: 20px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 16px; transition: box-shadow 0.2s; cursor: pointer; }
@@ -608,7 +608,7 @@ export default function ClientDashboard() {
       .acc-number { font-size: 14px; }
       .card-title { font-size: 18px; }
       
-      .mobile-greeting { font-size: 20px; margin-bottom: 12px; }
+      .mobile-greeting { font-size: 28px; margin-bottom: 12px; }
       
       .toast { bottom: 80px; white-space: normal; text-align: center; }
     }
@@ -665,7 +665,13 @@ export default function ClientDashboard() {
                   </div>
                 </div>
               )}
-              
+              <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                <div style={{ color: '#16a34a', marginTop: '2px', fontSize: '20px' }}>🔒</div>
+                <div>
+                  <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>New Login Detected</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>A secure login was detected from a new location. If this wasn't you, action is needed.</div>
+                </div>
+              </div>              
               <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
                 <div style={{ color: '#2563eb', marginTop: '2px', fontSize: '20px' }}>📄</div>
                 <div>
@@ -674,13 +680,7 @@ export default function ClientDashboard() {
                 </div>
               </div>
 
-              <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-                <div style={{ color: '#16a34a', marginTop: '2px', fontSize: '20px' }}>🔒</div>
-                <div>
-                  <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '15px', marginBottom: '4px' }}>New Login Detected</div>
-                  <div style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>A secure login was detected from a new device. If this was you, no action is needed.</div>
-                </div>
-              </div>
+
 
             </div>
           </div>
@@ -878,8 +878,8 @@ export default function ClientDashboard() {
             <BrandLogo size={36} textColor="#001e79" />
           </div>
           <div className="search-bar">
-            <span style={{ color: '#0045a5' }}>🔍</span>
             <input type="text" placeholder="U.S Bank Smart Assistant" />
+            <span style={{ color: '#0045a5' }}>🔍</span>
           </div>
           <div className="top-actions">
             <span onClick={() => setActiveModal('notifications')}>
@@ -916,9 +916,8 @@ export default function ClientDashboard() {
         </button>
         </div>
         <div className="mobile-search">
-          <span>🔍</span>
           <input type="text" placeholder="U.S Bank Smart Assistant" />
-          <span>🎤</span>
+          <span>🔍</span>
         </div>
         
         {/* CONDITIONALLY RENDERED: ONLY SHOWS ON DASHBOARD TAB */}
@@ -1188,7 +1187,7 @@ export default function ClientDashboard() {
                 <h2 className="card-title" style={{ marginBottom: '24px' }}>Account limits</h2>
                 <div style={{ marginBottom: '20px' }}>
                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>ACCOUNT TIER</div>
-                  <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--hero-blue)' }}>Private Wealth Elite</div>
+                  <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--hero-blue)' }}>Platinum</div>
                 </div>
                 <div style={{ marginBottom: '20px' }}>
                   <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>DAILY TRANSFER LIMIT</div>
